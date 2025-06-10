@@ -1,7 +1,7 @@
-# GitHub Actions 自動化工作流程
+# GitHub Actions 自動化工作流程 - 修正版本
 # 每日自動抓取 ArXiv 論文並生成 AI 摘要
 
-name: 每日 ArXiv 論文智慧摘要更新
+name: 📚 每日 ArXiv 論文智慧摘要更新 [修正版]
 
 on:
   # 定時執行：每日 UTC 16:30 (台灣時間 00:30)
@@ -32,7 +32,7 @@ jobs:
     
     steps:
     # 1. 檢出儲存庫（完整歷史）
-    - name: 檢出儲存庫
+    - name: 🔄 檢出儲存庫
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
@@ -40,33 +40,34 @@ jobs:
         ref: ${{ github.ref_name }}
       
     # 2. 設定 Python 環境
-    - name: 設定 Python 環境
+    - name: 🐍 設定 Python 環境
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
         
     # 3. 安裝基本套件
-    - name: 安裝基本套件
+    - name: 📦 安裝基本套件
       run: |
         python -m pip install --upgrade pip
         pip install requests pyyaml python-dateutil
         
     # 4. 設定 Git 使用者資訊
-    - name: 設定 Git 使用者資訊
+    - name: ⚙️ 設定 Git 使用者資訊
       run: |
         git config --global user.email "${{ vars.EMAIL || 'action@github.com' }}"
-        git config --global user.name "${{ vars.NAME || 'GitHub Action' }}"
+        git config --global user.name "${{ vars.NAME || 'GitHub Action [修正版]' }}"
         
     # 5. 強制同步遠端變更
-    - name: 強制同步遠端變更
+    - name: 🔄 強制同步遠端變更
       run: |
         echo "🔄 強制同步遠端變更..."
         git fetch origin --prune
         git reset --hard origin/${{ github.ref_name }}
         echo "✅ 同步完成，當前 HEAD: $(git rev-parse HEAD)"
+        echo "📍 確認使用修正版 Workflow"
         
     # 6. 執行簡化的處理腳本
-    - name: 執行論文處理（簡化版）
+    - name: 🚀 執行論文處理（簡化版）
       env:
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         MODEL_NAME: ${{ vars.MODEL_NAME || 'gemini-2.0-flash-exp' }}
@@ -80,7 +81,7 @@ jobs:
         python simple_main.py
         
     # 7. 檢查是否有檔案變更
-    - name: 檢查檔案變更
+    - name: 📋 檢查檔案變更
       id: check_changes
       run: |
         echo "📋 檢查檔案變更狀態..."
@@ -95,10 +96,12 @@ jobs:
           git status --short
         fi
         
-    # 8. 原子化提交和推送
-    - name: 原子化提交和推送
+    # 8. 🎯 原子化提交和推送 [修正版本]
+    - name: 🎯 原子化提交和推送 [修正版本]
       if: steps.check_changes.outputs.has_changes == 'true'
       run: |
+        echo "💫 開始原子化提交流程 [修正版本]..."
+        
         # 設定變數
         today_date=$(date -u "+%Y-%m-%d")
         max_attempts=5
@@ -106,12 +109,12 @@ jobs:
         
         # 產生提交訊息
         if [[ -n "${{ github.event.inputs.custom_date }}" ]]; then
-          commit_message="📚 更新論文摘要: ${{ github.event.inputs.custom_date }} (手動觸發)"
+          commit_message="📚 更新論文摘要: ${{ github.event.inputs.custom_date }} (手動觸發) [修正版]"
         else
-          commit_message="📚 每日論文摘要更新: ${today_date}"
+          commit_message="📚 每日論文摘要更新: ${today_date} [修正版]"
         fi
         
-        echo "💫 開始原子化提交流程..."
+        echo "📝 提交訊息: ${commit_message}"
         
         while [ $attempt -le $max_attempts ]; do
           echo "🔄 嘗試 $attempt/$max_attempts"
@@ -123,11 +126,17 @@ jobs:
           local_commit=$(git rev-parse HEAD)
           remote_commit=$(git rev-parse origin/${{ github.ref_name }})
           
+          echo "📍 本地提交: $local_commit"
+          echo "📍 遠端提交: $remote_commit"
+          
           if [ "$local_commit" != "$remote_commit" ]; then
             echo "🔄 偵測到遠端變更，正在同步..."
             
             # 暫存當前變更
-            git stash push -m "temp_changes_$(date +%s)"
+            if ! git diff --quiet || ! git diff --cached --quiet; then
+              echo "💾 暫存變更..."
+              git stash push -m "temp_changes_$(date +%s)" --include-untracked
+            fi
             
             # 重置到遠端狀態
             git reset --hard origin/${{ github.ref_name }}
@@ -153,9 +162,13 @@ jobs:
           fi
           
           # 提交變更
+          echo "💾 提交變更..."
           git commit -m "${commit_message}"
           
-          # 嘗試推送
+          # 嘗試推送 - 使用完整的推送命令
+          echo "🚀 推送變更到遠端..."
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          
           if git push origin HEAD:${{ github.ref_name }}; then
             echo "✅ 成功推送變更 (嘗試 $attempt)"
             break
@@ -164,6 +177,11 @@ jobs:
             
             if [ $attempt -eq $max_attempts ]; then
               echo "❌ 達到最大嘗試次數，推送失敗"
+              echo "🔍 最終狀態診斷："
+              echo "- 本地分支: $(git branch --show-current)"
+              echo "- 本地提交: $(git rev-parse HEAD)"
+              echo "- 遠端提交: $(git rev-parse origin/${{ github.ref_name }})"
+              git status
               exit 1
             fi
             
@@ -177,7 +195,7 @@ jobs:
         echo "🎉 提交流程完成"
         
     # 9. 驗證最終狀態
-    - name: 驗證最終狀態
+    - name: 🔍 驗證最終狀態
       if: always()
       run: |
         echo "🔍 最終狀態驗證："
@@ -186,13 +204,15 @@ jobs:
         echo "- 遠端提交: $(git rev-parse origin/${{ github.ref_name }})"
         echo "- 工作目錄狀態:"
         git status --short || echo "  工作目錄乾淨"
+        echo "- Workflow 版本: 修正版本"
         
     # 10. 生成執行報告
-    - name: 生成執行報告
+    - name: 📊 生成執行報告
       if: always()
       run: |
-        echo "## 📊 執行報告" >> $GITHUB_STEP_SUMMARY
+        echo "## 📊 執行報告 [修正版本]" >> $GITHUB_STEP_SUMMARY
         echo "- **執行時間**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Workflow 版本**: 修正版本" >> $GITHUB_STEP_SUMMARY
         echo "- **是否有變更**: ${{ steps.check_changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
         echo "- **執行模式**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Python 版本**: $(python --version)" >> $GITHUB_STEP_SUMMARY
@@ -212,7 +232,7 @@ jobs:
         echo "- **輸出語言**: ${{ vars.LANGUAGE || '使用預設值' }}" >> $GITHUB_STEP_SUMMARY
         
     # 11. 清理暫存檔案
-    - name: 清理暫存檔案
+    - name: 🧹 清理暫存檔案
       if: always()
       run: |
         find . -name "*.tmp" -delete 2>/dev/null || true
