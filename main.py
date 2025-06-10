@@ -12,9 +12,12 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# 添加 src 目錄到 Python 路徑
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
 # 本地模組
-from arxiv_crawler import ArxivCrawler
-from ai_summarizer import AISummarizer
+from src.crawler import ArxivCrawler
+from src.ai import AISummarizer
 
 # 設定日誌
 logging.basicConfig(
