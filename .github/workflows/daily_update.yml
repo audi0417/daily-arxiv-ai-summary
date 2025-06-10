@@ -31,13 +31,13 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    # 1. 檢出儲存庫
+    # 1. 檢出儲存庫（完整歷史）
     - name: 檢出儲存庫
       uses: actions/checkout@v4
       with:
-        # 使用具有推送權限的 token
         token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
+        ref: ${{ github.ref_name }}
       
     # 2. 設定 Python 環境
     - name: 設定 Python 環境
@@ -49,7 +49,6 @@ jobs:
     - name: 安裝基本套件
       run: |
         python -m pip install --upgrade pip
-        # 先安裝基本套件，避免依賴衝突
         pip install requests pyyaml python-dateutil
         
     # 4. 設定 Git 使用者資訊
@@ -58,77 +57,52 @@ jobs:
         git config --global user.email "${{ vars.EMAIL || 'action@github.com' }}"
         git config --global user.name "${{ vars.NAME || 'GitHub Action' }}"
         
-    # 5. 確保與遠端同步
-    - name: 同步遠端變更
+    # 5. 強制同步遠端變更
+    - name: 強制同步遠端變更
       run: |
-        # 拉取最新的遠端變更
-        git fetch origin
-        git pull origin ${{ github.ref_name }} || echo "沒有需要合併的變更"
+        echo "🔄 強制同步遠端變更..."
+        git fetch origin --prune
+        git reset --hard origin/${{ github.ref_name }}
+        echo "✅ 同步完成，當前 HEAD: $(git rev-parse HEAD)"
         
     # 6. 執行簡化的處理腳本
     - name: 執行論文處理（簡化版）
       env:
-        # API 設定
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        
-        # 模型設定
         MODEL_NAME: ${{ vars.MODEL_NAME || 'gemini-2.0-flash-exp' }}
         LANGUAGE: ${{ vars.LANGUAGE || 'Traditional Chinese' }}
-        
-        # 工作流程參數
         CUSTOM_DATE: ${{ github.event.inputs.custom_date }}
         FORCE_UPDATE: ${{ github.event.inputs.force_update }}
-        
-        # GitHub 相關
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         REPO_NAME: ${{ github.repository }}
-        
       run: |
-        # 執行簡化的處理腳本
+        echo "🚀 執行論文處理腳本..."
         python simple_main.py
         
     # 7. 檢查是否有檔案變更
     - name: 檢查檔案變更
       id: check_changes
       run: |
-        if [[ -z $(git status -s) ]]; then
+        echo "📋 檢查檔案變更狀態..."
+        git status --porcelain
+        
+        if [[ -z $(git status --porcelain) ]]; then
           echo "has_changes=false" >> $GITHUB_OUTPUT
           echo "📋 沒有檔案變更，跳過提交步驟"
         else
           echo "has_changes=true" >> $GITHUB_OUTPUT
-          echo "📝 偵測到檔案變更，準備提交"
-          git status
+          echo "📝 偵測到檔案變更："
+          git status --short
         fi
         
-    # 8. 智慧提交和推送變更
-    - name: 提交和推送變更
+    # 8. 原子化提交和推送
+    - name: 原子化提交和推送
       if: steps.check_changes.outputs.has_changes == 'true'
       run: |
-        # 取得今日日期（台灣時區）
+        # 設定變數
         today_date=$(date -u "+%Y-%m-%d")
-        
-        # 再次確保同步（防止執行期間有其他變更）
-        git fetch origin
-        
-        # 檢查是否有衝突
-        if ! git merge-base --is-ancestor HEAD origin/${{ github.ref_name }}; then
-          echo "🔄 偵測到遠端有新變更，正在合併..."
-          git pull origin ${{ github.ref_name }} --rebase || {
-            echo "❌ 合併失敗，嘗試重置並重新拉取"
-            git reset --hard origin/${{ github.ref_name }}
-            # 重新執行腳本以確保檔案是最新的
-            python simple_main.py
-          }
-        fi
-        
-        # 新增所有變更的檔案
-        git add .
-        
-        # 檢查是否真的有變更需要提交
-        if git diff --cached --quiet; then
-          echo "📋 合併後沒有變更需要提交"
-          exit 0
-        fi
+        max_attempts=5
+        attempt=1
         
         # 產生提交訊息
         if [[ -n "${{ github.event.inputs.custom_date }}" ]]; then
@@ -137,43 +111,83 @@ jobs:
           commit_message="📚 每日論文摘要更新: ${today_date}"
         fi
         
-        # 提交變更
-        git commit -m "${commit_message}"
+        echo "💫 開始原子化提交流程..."
         
-        # 推送到儲存庫（重試機制）
-        max_retries=3
-        retry_count=0
-        
-        while [ $retry_count -lt $max_retries ]; do
-          echo "🚀 嘗試推送變更 (第 $((retry_count + 1)) 次)..."
+        while [ $attempt -le $max_attempts ]; do
+          echo "🔄 嘗試 $attempt/$max_attempts"
           
-          # 設定遠端 URL
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          # 重新獲取最新狀態
+          git fetch origin
           
+          # 檢查是否需要合併
+          local_commit=$(git rev-parse HEAD)
+          remote_commit=$(git rev-parse origin/${{ github.ref_name }})
+          
+          if [ "$local_commit" != "$remote_commit" ]; then
+            echo "🔄 偵測到遠端變更，正在同步..."
+            
+            # 暫存當前變更
+            git stash push -m "temp_changes_$(date +%s)"
+            
+            # 重置到遠端狀態
+            git reset --hard origin/${{ github.ref_name }}
+            
+            # 重新執行腳本以確保最新狀態
+            echo "🔄 重新執行腳本..."
+            python simple_main.py
+            
+            # 檢查是否還有變更
+            if [[ -z $(git status --porcelain) ]]; then
+              echo "📋 同步後沒有變更，結束流程"
+              break
+            fi
+          fi
+          
+          # 新增變更
+          git add .
+          
+          # 再次檢查是否有變更
+          if git diff --cached --quiet; then
+            echo "📋 沒有變更需要提交"
+            break
+          fi
+          
+          # 提交變更
+          git commit -m "${commit_message}"
+          
+          # 嘗試推送
           if git push origin HEAD:${{ github.ref_name }}; then
-            echo "✅ 成功提交並推送變更"
+            echo "✅ 成功推送變更 (嘗試 $attempt)"
             break
           else
-            echo "⚠️ 推送失敗，嘗試同步並重試..."
-            retry_count=$((retry_count + 1))
+            echo "⚠️ 推送失敗，準備重試..."
             
-            if [ $retry_count -lt $max_retries ]; then
-              # 拉取最新變更並嘗試重新合併
-              git fetch origin
-              if git pull origin ${{ github.ref_name }} --rebase; then
-                echo "🔄 成功同步，準備重試推送"
-              else
-                echo "❌ 同步失敗，將在下次重試"
-                sleep 5
-              fi
-            else
-              echo "❌ 達到最大重試次數，推送失敗"
+            if [ $attempt -eq $max_attempts ]; then
+              echo "❌ 達到最大嘗試次數，推送失敗"
               exit 1
             fi
+            
+            # 重置到推送前狀態，準備重試
+            git reset --soft HEAD~1
+            attempt=$((attempt + 1))
+            sleep $((attempt * 2))  # 指數退避
           fi
         done
         
-    # 9. 生成執行報告
+        echo "🎉 提交流程完成"
+        
+    # 9. 驗證最終狀態
+    - name: 驗證最終狀態
+      if: always()
+      run: |
+        echo "🔍 最終狀態驗證："
+        echo "- 當前分支: $(git branch --show-current)"
+        echo "- 當前提交: $(git rev-parse HEAD)"
+        echo "- 遠端提交: $(git rev-parse origin/${{ github.ref_name }})"
+        echo "- 工作目錄狀態:"
+        git status --short || echo "  工作目錄乾淨"
+        
+    # 10. 生成執行報告
     - name: 生成執行報告
       if: always()
       run: |
@@ -182,6 +196,7 @@ jobs:
         echo "- **是否有變更**: ${{ steps.check_changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
         echo "- **執行模式**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Python 版本**: $(python --version)" >> $GITHUB_STEP_SUMMARY
+        echo "- **當前提交**: $(git rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
         
         if [[ -n "${{ github.event.inputs.custom_date }}" ]]; then
           echo "- **自訂日期**: ${{ github.event.inputs.custom_date }}" >> $GITHUB_STEP_SUMMARY
@@ -191,25 +206,15 @@ jobs:
           echo "- **強制更新**: 是" >> $GITHUB_STEP_SUMMARY
         fi
         
-        # 檢查設定狀態
         echo "## ⚙️ 設定狀態" >> $GITHUB_STEP_SUMMARY
         echo "- **API 金鑰**: ${{ secrets.GOOGLE_API_KEY && '已設定' || '未設定' }}" >> $GITHUB_STEP_SUMMARY
         echo "- **模型名稱**: ${{ vars.MODEL_NAME || '使用預設值' }}" >> $GITHUB_STEP_SUMMARY
         echo "- **輸出語言**: ${{ vars.LANGUAGE || '使用預設值' }}" >> $GITHUB_STEP_SUMMARY
         
-        # 如果有錯誤檔案，顯示錯誤資訊
-        if [[ -f "error.log" ]]; then
-          echo "## ⚠️ 執行過程中的警告" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -10 error.log >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-        fi
-        
-    # 10. 清理暫存檔案
+    # 11. 清理暫存檔案
     - name: 清理暫存檔案
       if: always()
       run: |
-        # 清理可能產生的暫存檔案
         find . -name "*.tmp" -delete 2>/dev/null || true
         find . -name "*.temp" -delete 2>/dev/null || true
         find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
