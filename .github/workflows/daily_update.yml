@@ -58,7 +58,14 @@ jobs:
         git config --global user.email "${{ vars.EMAIL || 'action@github.com' }}"
         git config --global user.name "${{ vars.NAME || 'GitHub Action' }}"
         
-    # 5. 執行簡化的處理腳本
+    # 5. 確保與遠端同步
+    - name: 同步遠端變更
+      run: |
+        # 拉取最新的遠端變更
+        git fetch origin
+        git pull origin ${{ github.ref_name }} || echo "沒有需要合併的變更"
+        
+    # 6. 執行簡化的處理腳本
     - name: 執行論文處理（簡化版）
       env:
         # API 設定
@@ -80,7 +87,7 @@ jobs:
         # 執行簡化的處理腳本
         python simple_main.py
         
-    # 6. 檢查是否有檔案變更
+    # 7. 檢查是否有檔案變更
     - name: 檢查檔案變更
       id: check_changes
       run: |
@@ -93,15 +100,35 @@ jobs:
           git status
         fi
         
-    # 7. 提交變更（如果有的話）
+    # 8. 智慧提交和推送變更
     - name: 提交和推送變更
       if: steps.check_changes.outputs.has_changes == 'true'
       run: |
         # 取得今日日期（台灣時區）
         today_date=$(date -u "+%Y-%m-%d")
         
+        # 再次確保同步（防止執行期間有其他變更）
+        git fetch origin
+        
+        # 檢查是否有衝突
+        if ! git merge-base --is-ancestor HEAD origin/${{ github.ref_name }}; then
+          echo "🔄 偵測到遠端有新變更，正在合併..."
+          git pull origin ${{ github.ref_name }} --rebase || {
+            echo "❌ 合併失敗，嘗試重置並重新拉取"
+            git reset --hard origin/${{ github.ref_name }}
+            # 重新執行腳本以確保檔案是最新的
+            python simple_main.py
+          }
+        fi
+        
         # 新增所有變更的檔案
         git add .
+        
+        # 檢查是否真的有變更需要提交
+        if git diff --cached --quiet; then
+          echo "📋 合併後沒有變更需要提交"
+          exit 0
+        fi
         
         # 產生提交訊息
         if [[ -n "${{ github.event.inputs.custom_date }}" ]]; then
@@ -113,13 +140,40 @@ jobs:
         # 提交變更
         git commit -m "${commit_message}"
         
-        # 推送到儲存庫（使用 GITHUB_TOKEN）
-        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-        git push origin HEAD:${{ github.ref_name }}
+        # 推送到儲存庫（重試機制）
+        max_retries=3
+        retry_count=0
         
-        echo "✅ 成功提交並推送變更"
+        while [ $retry_count -lt $max_retries ]; do
+          echo "🚀 嘗試推送變更 (第 $((retry_count + 1)) 次)..."
+          
+          # 設定遠端 URL
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          
+          if git push origin HEAD:${{ github.ref_name }}; then
+            echo "✅ 成功提交並推送變更"
+            break
+          else
+            echo "⚠️ 推送失敗，嘗試同步並重試..."
+            retry_count=$((retry_count + 1))
+            
+            if [ $retry_count -lt $max_retries ]; then
+              # 拉取最新變更並嘗試重新合併
+              git fetch origin
+              if git pull origin ${{ github.ref_name }} --rebase; then
+                echo "🔄 成功同步，準備重試推送"
+              else
+                echo "❌ 同步失敗，將在下次重試"
+                sleep 5
+              fi
+            else
+              echo "❌ 達到最大重試次數，推送失敗"
+              exit 1
+            fi
+          fi
+        done
         
-    # 8. 生成執行報告
+    # 9. 生成執行報告
     - name: 生成執行報告
       if: always()
       run: |
@@ -151,7 +205,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
         fi
         
-    # 9. 清理暫存檔案
+    # 10. 清理暫存檔案
     - name: 清理暫存檔案
       if: always()
       run: |
