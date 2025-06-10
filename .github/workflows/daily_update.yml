@@ -21,6 +21,11 @@ on:
         type: boolean
         default: false
 
+# 添加必要的權限設定
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   update_papers:
     runs-on: ubuntu-latest
@@ -29,6 +34,10 @@ jobs:
     # 1. 檢出儲存庫
     - name: 檢出儲存庫
       uses: actions/checkout@v4
+      with:
+        # 使用具有推送權限的 token
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
       
     # 2. 設定 Python 環境
     - name: 設定 Python 環境
@@ -81,6 +90,7 @@ jobs:
         else
           echo "has_changes=true" >> $GITHUB_OUTPUT
           echo "📝 偵測到檔案變更，準備提交"
+          git status
         fi
         
     # 7. 提交變更（如果有的話）
@@ -103,8 +113,9 @@ jobs:
         # 提交變更
         git commit -m "${commit_message}"
         
-        # 推送到儲存庫
-        git push
+        # 推送到儲存庫（使用 GITHUB_TOKEN）
+        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        git push origin HEAD:${{ github.ref_name }}
         
         echo "✅ 成功提交並推送變更"
         
