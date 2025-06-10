@@ -1,0 +1,142 @@
+# GitHub Actions 自動化工作流程
+# 每日自動抓取 ArXiv 論文並生成 AI 摘要
+
+name: 每日 ArXiv 論文智慧摘要更新
+
+on:
+  # 定時執行：每日 UTC 16:30 (台灣時間 00:30)
+  schedule:
+    - cron: "30 16 * * *"
+  
+  # 允許手動觸發
+  workflow_dispatch:
+    inputs:
+      custom_date:
+        description: '自訂日期 (YYYY-MM-DD，留空為今日)'
+        required: false
+        type: string
+      force_update:
+        description: '強制更新 (即使沒有新論文)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  update_papers:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. 檢出儲存庫
+    - name: 檢出儲存庫
+      uses: actions/checkout@v4
+      
+    # 2. 設定 Python 環境
+    - name: 設定 Python 環境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    # 3. 安裝專案相依套件
+    - name: 安裝專案相依套件
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    # 4. 設定 Git 使用者資訊
+    - name: 設定 Git 使用者資訊
+      run: |
+        git config --global user.email "${{ vars.EMAIL }}"
+        git config --global user.name "${{ vars.NAME }}"
+        
+    # 5. 執行主要工作流程
+    - name: 執行論文抓取與處理
+      env:
+        # API 設定
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        
+        # 模型設定
+        MODEL_NAME: ${{ vars.MODEL_NAME }}
+        LANGUAGE: ${{ vars.LANGUAGE }}
+        
+        # 工作流程參數
+        CUSTOM_DATE: ${{ github.event.inputs.custom_date }}
+        FORCE_UPDATE: ${{ github.event.inputs.force_update }}
+        
+        # GitHub 相關
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        REPO_NAME: ${{ github.repository }}
+        
+      run: |
+        # 執行主要處理腳本
+        python src/main.py
+        
+    # 6. 檢查是否有檔案變更
+    - name: 檢查檔案變更
+      id: check_changes
+      run: |
+        if [[ -z $(git status -s) ]]; then
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          echo "📋 沒有檔案變更，跳過提交步驟"
+        else
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "📝 偵測到檔案變更，準備提交"
+        fi
+        
+    # 7. 提交變更（如果有的話）
+    - name: 提交和推送變更
+      if: steps.check_changes.outputs.has_changes == 'true'
+      run: |
+        # 取得今日日期（台灣時區）
+        today_date=$(TZ=Asia/Taipei date "+%Y-%m-%d")
+        
+        # 新增所有變更的檔案
+        git add .
+        
+        # 產生提交訊息
+        if [[ -n "${{ github.event.inputs.custom_date }}" ]]; then
+          commit_message="📚 更新論文摘要: ${{ github.event.inputs.custom_date }} (手動觸發)"
+        else
+          commit_message="📚 每日論文摘要更新: ${today_date}"
+        fi
+        
+        # 提交變更
+        git commit -m "${commit_message}"
+        
+        # 推送到儲存庫
+        git push
+        
+        echo "✅ 成功提交並推送變更"
+        
+    # 8. 生成執行報告
+    - name: 生成執行報告
+      if: always()
+      run: |
+        echo "## 📊 執行報告" >> $GITHUB_STEP_SUMMARY
+        echo "- **執行時間**: $(TZ=Asia/Taipei date)" >> $GITHUB_STEP_SUMMARY
+        echo "- **是否有變更**: ${{ steps.check_changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **執行模式**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ -n "${{ github.event.inputs.custom_date }}" ]]; then
+          echo "- **自訂日期**: ${{ github.event.inputs.custom_date }}" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [[ "${{ github.event.inputs.force_update }}" == "true" ]]; then
+          echo "- **強制更新**: 是" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # 如果有錯誤檔案，顯示錯誤資訊
+        if [[ -f "error.log" ]]; then
+          echo "## ⚠️ 執行過程中的警告" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -10 error.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        fi
+        
+    # 9. 清理暫存檔案
+    - name: 清理暫存檔案
+      if: always()
+      run: |
+        # 清理可能產生的暫存檔案
+        find . -name "*.tmp" -delete 2>/dev/null || true
+        find . -name "*.temp" -delete 2>/dev/null || true
+        find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
