@@ -1,42 +1,23 @@
-# 核心相依套件
-arxiv>=2.1.3
-feedparser>=6.0.10
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-lxml>=4.9.0
+# ArXiv 每日論文摘要專案依賴套件
 
-# AI 和機器學習相關
-google-generativeai>=0.3.2
-pydantic>=2.5.0
+# 核心套件
+requests>=2.31.0
+PyYAML>=6.0.1
+python-dateutil>=2.8.2
+
+# Google AI 套件
+google-generativeai>=0.3.0
 
 # 資料處理
-pandas>=2.1.0
-numpy>=1.24.0
-pyyaml>=6.0.1
-python-dateutil>=2.8.0
+lxml>=4.9.3
 
-# 網頁爬蟲
-scrapy>=2.11.0
+# 可選的額外套件 (進階功能)
+# beautifulsoup4>=4.12.2  # HTML 解析 (如需處理網頁內容)
+# pandas>=2.0.0          # 資料分析 (如需統計分析)
+# matplotlib>=3.7.0      # 圖表生成 (如需視覺化)
+# seaborn>=0.12.0        # 進階圖表 (如需美化圖表)
 
-# 文件處理和格式化
-markdown>=3.5.0
-jinja2>=3.1.0
-
-# 工具類套件
-tqdm>=4.66.0
-colorama>=0.4.6
-python-dotenv>=1.0.0
-click>=8.1.0
-
-# 日期和時區處理
-pytz>=2023.3
-tzdata>=2023.3
-
-# 測試相關 (開發用)
-pytest>=7.4.0
-pytest-cov>=4.1.0
-black>=23.0.0
-flake8>=6.0.0
-
-# 新增的必要套件
-zoneinfo>=0.2.1; python_version < "3.9"
+# 開發工具 (本地開發使用)
+# pytest>=7.4.0         # 測試框架
+# black>=23.0.0          # 程式碼格式化
+# flake8>=6.0.0          # 程式碼檢查
