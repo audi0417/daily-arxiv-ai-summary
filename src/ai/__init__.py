@@ -1,4 +1,7 @@
 """
-AI 增強模組
-包含 Gemini AI 相關功能
+AI 摘要生成模組
 """
+
+from .summarizer import AISummarizer
+
+__all__ = ['AISummarizer']
