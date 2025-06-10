@@ -1,0 +1,95 @@
+# ArXiv 論文主題設定檔
+# 此檔案用於定義要抓取的論文類別和過濾條件
+
+# ArXiv 主要類別設定
+# 完整類別列表請參考：https://arxiv.org/category_taxonomy
+categories:
+  # 電腦科學相關
+  - cs.AI        # 人工智慧
+  - cs.LG        # 機器學習  
+  - cs.CV        # 電腦視覺
+  - cs.CL        # 計算語言學與自然語言處理
+  - cs.NE        # 神經與演化計算
+  - cs.IR        # 資訊檢索
+  - cs.HC        # 人機互動
+  
+  # 統計學與數學
+  - stat.ML      # 機器學習統計
+  - stat.AP      # 應用統計
+  - math.OC      # 最佳化與控制
+  
+  # 物理學相關（可選）
+  # - physics.data-an  # 資料分析、統計與機率
+  # - physics.comp-ph  # 計算物理學
+  
+  # 生物學相關（可選）
+  # - q-bio.QM     # 定量方法
+  # - q-bio.NC     # 神經與認知
+
+# 關鍵字過濾設定（可選）
+# 如果不需要關鍵字過濾，可以註解掉整個 keywords 區塊
+keywords:
+  # 必須包含的關鍵字（論文標題或摘要中包含任一關鍵字）
+  include:
+    - transformer
+    - attention
+    - deep learning
+    - neural network
+    - machine learning
+    - artificial intelligence
+    - computer vision
+    - natural language processing
+    - large language model
+    - generative AI
+    - diffusion model
+    - reinforcement learning
+    - federated learning
+    - few-shot learning
+    - zero-shot learning
+    - multi-modal
+    - cross-modal
+    
+  # 要排除的關鍵字（論文標題或摘要中包含這些關鍵字將被過濾掉）
+  exclude:
+    - survey only
+    - review only
+    - tutorial only
+    # 注意：不建議過度使用排除關鍵字，以免遺漏重要論文
+
+# 論文數量限制（可選）
+limits:
+  # 每日最大處理論文數量（避免 API 用量過大）
+  max_papers_per_day: 50
+  
+  # 每個類別最大論文數量
+  max_papers_per_category: 10
+
+# 日期範圍設定（可選）
+date_filter:
+  # 只處理最近 N 天內的論文（避免處理過舊的論文）
+  recent_days: 3
+  
+  # 是否包含週末發布的論文
+  include_weekends: true
+
+# AI 分析設定
+ai_analysis:
+  # 是否啟用關鍵字重要性評分
+  enable_keyword_scoring: true
+  
+  # 是否啟用相關論文推薦
+  enable_related_papers: false
+  
+  # 是否啟用技術難度評估
+  enable_difficulty_assessment: true
+
+# 輸出格式設定
+output:
+  # 是否生成 PDF 版本的報告
+  generate_pdf: false
+  
+  # 是否包含論文的參考文獻
+  include_references: false
+  
+  # 是否包含作者資訊的詳細分析
+  detailed_author_info: false
