@@ -16,12 +16,23 @@ from typing import List, Dict, Optional
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.crawler.arxiv_crawler import ArxivCrawler
-from src.processor.data_processor import DataProcessor
-from src.ai.gemini_enhancer import GeminiEnhancer
-from src.generator.report_generator import ReportGenerator
-from src.utils.config_loader import ConfigLoader
-from src.utils.logger import setup_logger
+# 修正導入路徑 - 使用相對導入
+try:
+    from crawler.arxiv_crawler import ArxivCrawler
+    from processor.data_processor import DataProcessor
+    from ai.gemini_enhancer import GeminiEnhancer
+    from generator.report_generator import ReportGenerator
+    from utils.config_loader import ConfigLoader
+    from utils.logger import setup_logger
+except ImportError:
+    # 如果相對導入失敗，嘗試絕對導入
+    sys.path.append(str(project_root / "src"))
+    from crawler.arxiv_crawler import ArxivCrawler
+    from processor.data_processor import DataProcessor
+    from ai.gemini_enhancer import GeminiEnhancer
+    from generator.report_generator import ReportGenerator
+    from utils.config_loader import ConfigLoader
+    from utils.logger import setup_logger
 
 
 class DailyArxivUpdater:
@@ -80,8 +91,14 @@ class DailyArxivUpdater:
                 self.logger.warning(f"⚠️ 自訂日期格式錯誤，使用今日日期: {custom_date}")
         
         # 使用台灣時區的今日日期
-        from zoneinfo import ZoneInfo
-        taipei_tz = ZoneInfo("Asia/Taipei")
+        try:
+            from zoneinfo import ZoneInfo
+            taipei_tz = ZoneInfo("Asia/Taipei")
+        except ImportError:
+            # fallback for older Python versions
+            import pytz
+            taipei_tz = pytz.timezone("Asia/Taipei")
+        
         today = datetime.now(taipei_tz).strftime('%Y-%m-%d')
         self.logger.info(f"📅 使用今日日期: {today}")
         return today
