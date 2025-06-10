@@ -36,27 +36,28 @@ jobs:
       with:
         python-version: '3.12'
         
-    # 3. 安裝專案相依套件
-    - name: 安裝專案相依套件
+    # 3. 安裝基本套件
+    - name: 安裝基本套件
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        # 先安裝基本套件，避免依賴衝突
+        pip install requests pyyaml python-dateutil
         
     # 4. 設定 Git 使用者資訊
     - name: 設定 Git 使用者資訊
       run: |
-        git config --global user.email "${{ vars.EMAIL }}"
-        git config --global user.name "${{ vars.NAME }}"
+        git config --global user.email "${{ vars.EMAIL || 'action@github.com' }}"
+        git config --global user.name "${{ vars.NAME || 'GitHub Action' }}"
         
-    # 5. 執行主要工作流程
-    - name: 執行論文抓取與處理
+    # 5. 執行簡化的處理腳本
+    - name: 執行論文處理（簡化版）
       env:
         # API 設定
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         
         # 模型設定
-        MODEL_NAME: ${{ vars.MODEL_NAME }}
-        LANGUAGE: ${{ vars.LANGUAGE }}
+        MODEL_NAME: ${{ vars.MODEL_NAME || 'gemini-2.0-flash-exp' }}
+        LANGUAGE: ${{ vars.LANGUAGE || 'Traditional Chinese' }}
         
         # 工作流程參數
         CUSTOM_DATE: ${{ github.event.inputs.custom_date }}
@@ -67,8 +68,8 @@ jobs:
         REPO_NAME: ${{ github.repository }}
         
       run: |
-        # 執行主要處理腳本
-        python src/main.py
+        # 執行簡化的處理腳本
+        python simple_main.py
         
     # 6. 檢查是否有檔案變更
     - name: 檢查檔案變更
@@ -87,7 +88,7 @@ jobs:
       if: steps.check_changes.outputs.has_changes == 'true'
       run: |
         # 取得今日日期（台灣時區）
-        today_date=$(TZ=Asia/Taipei date "+%Y-%m-%d")
+        today_date=$(date -u "+%Y-%m-%d")
         
         # 新增所有變更的檔案
         git add .
@@ -112,9 +113,10 @@ jobs:
       if: always()
       run: |
         echo "## 📊 執行報告" >> $GITHUB_STEP_SUMMARY
-        echo "- **執行時間**: $(TZ=Asia/Taipei date)" >> $GITHUB_STEP_SUMMARY
+        echo "- **執行時間**: $(date -u)" >> $GITHUB_STEP_SUMMARY
         echo "- **是否有變更**: ${{ steps.check_changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
         echo "- **執行模式**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Python 版本**: $(python --version)" >> $GITHUB_STEP_SUMMARY
         
         if [[ -n "${{ github.event.inputs.custom_date }}" ]]; then
           echo "- **自訂日期**: ${{ github.event.inputs.custom_date }}" >> $GITHUB_STEP_SUMMARY
@@ -123,6 +125,12 @@ jobs:
         if [[ "${{ github.event.inputs.force_update }}" == "true" ]]; then
           echo "- **強制更新**: 是" >> $GITHUB_STEP_SUMMARY
         fi
+        
+        # 檢查設定狀態
+        echo "## ⚙️ 設定狀態" >> $GITHUB_STEP_SUMMARY
+        echo "- **API 金鑰**: ${{ secrets.GOOGLE_API_KEY && '已設定' || '未設定' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **模型名稱**: ${{ vars.MODEL_NAME || '使用預設值' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **輸出語言**: ${{ vars.LANGUAGE || '使用預設值' }}" >> $GITHUB_STEP_SUMMARY
         
         # 如果有錯誤檔案，顯示錯誤資訊
         if [[ -f "error.log" ]]; then
