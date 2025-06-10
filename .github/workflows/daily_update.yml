@@ -1,7 +1,7 @@
-# GitHub Actions 自動化工作流程 - 修正版本
+# GitHub Actions 自動化工作流程 - 完整版本
 # 每日自動抓取 ArXiv 論文並生成 AI 摘要
 
-name: 📚 每日 ArXiv 論文智慧摘要更新 [修正版]
+name: 📚 每日 ArXiv 論文智慧摘要更新
 
 on:
   # 定時執行：每日 UTC 16:30 (台灣時間 00:30)
@@ -16,7 +16,7 @@ on:
         required: false
         type: string
       force_update:
-        description: '強制更新 (即使沒有新論文)'
+        description: '強制更新 (即使已有報告)'
         required: false
         type: boolean
         default: false
@@ -45,17 +45,17 @@ jobs:
       with:
         python-version: '3.12'
         
-    # 3. 安裝基本套件
-    - name: 📦 安裝基本套件
+    # 3. 安裝依賴套件
+    - name: 📦 安裝依賴套件
       run: |
         python -m pip install --upgrade pip
-        pip install requests pyyaml python-dateutil
+        pip install -r requirements.txt
         
     # 4. 設定 Git 使用者資訊
     - name: ⚙️ 設定 Git 使用者資訊
       run: |
         git config --global user.email "${{ vars.EMAIL || 'action@github.com' }}"
-        git config --global user.name "${{ vars.NAME || 'GitHub Action [修正版]' }}"
+        git config --global user.name "${{ vars.NAME || 'ArXiv Daily Bot' }}"
         
     # 5. 強制同步遠端變更
     - name: 🔄 強制同步遠端變更
@@ -64,10 +64,9 @@ jobs:
         git fetch origin --prune
         git reset --hard origin/${{ github.ref_name }}
         echo "✅ 同步完成，當前 HEAD: $(git rev-parse HEAD)"
-        echo "📍 確認使用修正版 Workflow"
         
-    # 6. 執行簡化的處理腳本
-    - name: 🚀 執行論文處理（簡化版）
+    # 6. 執行論文爬蟲和摘要生成
+    - name: 🚀 執行論文爬蟲和摘要生成
       env:
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         MODEL_NAME: ${{ vars.MODEL_NAME || 'gemini-2.0-flash-exp' }}
@@ -77,8 +76,13 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         REPO_NAME: ${{ github.repository }}
       run: |
-        echo "🚀 執行論文處理腳本..."
-        python simple_main.py
+        echo "🚀 開始執行論文處理..."
+        echo "📅 目標日期: ${CUSTOM_DATE:-$(date -u '+%Y-%m-%d')}"
+        echo "🔄 強制更新: ${FORCE_UPDATE}"
+        echo "🤖 AI 模型: ${MODEL_NAME}"
+        
+        # 執行主腳本
+        python main.py
         
     # 7. 檢查是否有檔案變更
     - name: 📋 檢查檔案變更
@@ -96,11 +100,11 @@ jobs:
           git status --short
         fi
         
-    # 8. 🎯 原子化提交和推送 [修正版本]
-    - name: 🎯 原子化提交和推送 [修正版本]
+    # 8. 🎯 原子化提交和推送
+    - name: 🎯 原子化提交和推送
       if: steps.check_changes.outputs.has_changes == 'true'
       run: |
-        echo "💫 開始原子化提交流程 [修正版本]..."
+        echo "💫 開始原子化提交流程..."
         
         # 設定變數
         today_date=$(date -u "+%Y-%m-%d")
@@ -109,9 +113,9 @@ jobs:
         
         # 產生提交訊息
         if [[ -n "${{ github.event.inputs.custom_date }}" ]]; then
-          commit_message="📚 更新論文摘要: ${{ github.event.inputs.custom_date }} (手動觸發) [修正版]"
+          commit_message="📚 論文摘要更新: ${{ github.event.inputs.custom_date }} (手動觸發)"
         else
-          commit_message="📚 每日論文摘要更新: ${today_date} [修正版]"
+          commit_message="📚 每日論文摘要更新: ${today_date}"
         fi
         
         echo "📝 提交訊息: ${commit_message}"
@@ -143,7 +147,7 @@ jobs:
             
             # 重新執行腳本以確保最新狀態
             echo "🔄 重新執行腳本..."
-            python simple_main.py
+            python main.py
             
             # 檢查是否還有變更
             if [[ -z $(git status --porcelain) ]]; then
@@ -204,15 +208,20 @@ jobs:
         echo "- 遠端提交: $(git rev-parse origin/${{ github.ref_name }})"
         echo "- 工作目錄狀態:"
         git status --short || echo "  工作目錄乾淨"
-        echo "- Workflow 版本: 修正版本"
+        
+        # 檢查生成的檔案
+        if [ -d "data" ]; then
+          echo "- 生成的報告檔案:"
+          ls -la data/*.md 2>/dev/null || echo "  沒有找到 .md 檔案"
+          ls -la data/*.json 2>/dev/null || echo "  沒有找到 .json 檔案"
+        fi
         
     # 10. 生成執行報告
     - name: 📊 生成執行報告
       if: always()
       run: |
-        echo "## 📊 執行報告 [修正版本]" >> $GITHUB_STEP_SUMMARY
+        echo "## 📊 執行報告" >> $GITHUB_STEP_SUMMARY
         echo "- **執行時間**: $(date -u)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Workflow 版本**: 修正版本" >> $GITHUB_STEP_SUMMARY
         echo "- **是否有變更**: ${{ steps.check_changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
         echo "- **執行模式**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Python 版本**: $(python --version)" >> $GITHUB_STEP_SUMMARY
@@ -231,6 +240,15 @@ jobs:
         echo "- **模型名稱**: ${{ vars.MODEL_NAME || '使用預設值' }}" >> $GITHUB_STEP_SUMMARY
         echo "- **輸出語言**: ${{ vars.LANGUAGE || '使用預設值' }}" >> $GITHUB_STEP_SUMMARY
         
+        # 檢查生成的檔案
+        if [ -d "data" ]; then
+          echo "## 📁 生成的檔案" >> $GITHUB_STEP_SUMMARY
+          md_count=$(ls data/*.md 2>/dev/null | wc -l)
+          json_count=$(ls data/*.json 2>/dev/null | wc -l)
+          echo "- **Markdown 報告**: ${md_count} 個" >> $GITHUB_STEP_SUMMARY
+          echo "- **JSON 資料**: ${json_count} 個" >> $GITHUB_STEP_SUMMARY
+        fi
+        
     # 11. 清理暫存檔案
     - name: 🧹 清理暫存檔案
       if: always()
@@ -238,3 +256,4 @@ jobs:
         find . -name "*.tmp" -delete 2>/dev/null || true
         find . -name "*.temp" -delete 2>/dev/null || true
         find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+        find . -name "*.pyc" -delete 2>/dev/null || true
