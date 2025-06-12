@@ -1,0 +1,121 @@
+name: 🧪 測試修復後的爬蟲
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_date:
+        description: '測試日期 (YYYY-MM-DD)'
+        required: false
+        default: '2025-06-11'
+        type: string
+      debug_mode:
+        description: '偵錯模式'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  test_crawler:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🔄 檢出儲存庫
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: 🐍 設定 Python 環境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: 📦 安裝依賴套件
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: 🧪 測試爬蟲功能
+      env:
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        MODEL_NAME: ${{ vars.MODEL_NAME || 'gemini-2.0-flash-exp' }}
+        LANGUAGE: ${{ vars.LANGUAGE || 'Traditional Chinese' }}
+        CUSTOM_DATE: ${{ github.event.inputs.test_date }}
+        FORCE_UPDATE: true
+      run: |
+        echo "🧪 開始測試爬蟲修復..."
+        echo "📅 測試日期: ${{ github.event.inputs.test_date }}"
+        echo "🔧 偵錯模式: ${{ github.event.inputs.debug_mode }}"
+        
+        # 如果啟用偵錯模式，增加詳細日誌
+        if [[ "${{ github.event.inputs.debug_mode }}" == "true" ]]; then
+          export PYTHONUNBUFFERED=1
+          python -c "
+import logging
+logging.basicConfig(level=logging.DEBUG)
+import sys
+sys.path.append('.')
+from arxiv_crawler import ArxivCrawler
+import yaml
+
+print('🔍 測試爬蟲初始化...')
+crawler = ArxivCrawler()
+print('✅ 爬蟲初始化成功')
+
+print('🔍 測試論文抓取...')
+papers = crawler.get_papers('${{ github.event.inputs.test_date }}')
+print(f'✅ 成功抓取 {len(papers)} 篇論文')
+
+if papers:
+    print('📄 第一篇論文資訊:')
+    paper = papers[0]
+    print(f'  標題: {paper.get(\"title\", \"未知\")}')
+    print(f'  作者: {len(paper.get(\"authors\", []))} 位')
+    print(f'  類別: {paper.get(\"categories\", [])}')
+    print(f'  ID: {paper.get(\"arxiv_id\", \"未知\")}')
+else:
+    print('⚠️ 沒有找到論文，檢查日期或網路連接')
+"
+        else
+          python main.py
+        fi
+        
+    - name: 📊 測試結果報告
+      if: always()
+      run: |
+        echo "## 🧪 測試結果" >> $GITHUB_STEP_SUMMARY
+        echo "- **測試時間**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "- **測試日期**: ${{ github.event.inputs.test_date }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **偵錯模式**: ${{ github.event.inputs.debug_mode }}" >> $GITHUB_STEP_SUMMARY
+        
+        # 檢查生成的檔案
+        if [ -f "data/${{ github.event.inputs.test_date }}.md" ]; then
+          echo "- **報告生成**: ✅ 成功" >> $GITHUB_STEP_SUMMARY
+          file_size=$(wc -c < "data/${{ github.event.inputs.test_date }}.md")
+          echo "- **報告大小**: ${file_size} 字節" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- **報告生成**: ❌ 失敗" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -f "data/${{ github.event.inputs.test_date }}_papers.json" ]; then
+          echo "- **資料檔案**: ✅ 存在" >> $GITHUB_STEP_SUMMARY
+          paper_count=$(python -c "
+import json
+try:
+    with open('data/${{ github.event.inputs.test_date }}_papers.json', 'r') as f:
+        papers = json.load(f)
+    print(len(papers))
+except:
+    print(0)
+")
+          echo "- **論文數量**: ${paper_count} 篇" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- **資料檔案**: ❌ 不存在" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "## 🔧 系統狀態" >> $GITHUB_STEP_SUMMARY
+        echo "- **Python 版本**: $(python --version)" >> $GITHUB_STEP_SUMMARY
+        echo "- **API 金鑰**: ${{ secrets.GOOGLE_API_KEY && '已設定' || '未設定' }}" >> $GITHUB_STEP_SUMMARY
