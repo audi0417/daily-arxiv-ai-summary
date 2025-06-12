@@ -1,15 +1,15 @@
-name: 🧪 測試修復後的爬蟲
+name: Test ArXiv Crawler Fix
 
 on:
   workflow_dispatch:
     inputs:
       test_date:
-        description: '測試日期 (YYYY-MM-DD)'
+        description: 'Test date (YYYY-MM-DD)'
         required: false
         default: '2025-06-11'
         type: string
       debug_mode:
-        description: '偵錯模式'
+        description: 'Enable debug mode'
         required: false
         default: true
         type: boolean
@@ -23,102 +23,144 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 🔄 檢出儲存庫
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         
-    - name: 🐍 設定 Python 環境
+    - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
         
-    - name: 📦 安裝依賴套件
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: 🧪 測試爬蟲功能
+    - name: Create test script
+      run: |
+        cat > test_crawler.py << 'EOF'
+        import logging
+        import sys
+        import traceback
+        import os
+        
+        # Setup logging
+        logging.basicConfig(
+            level=logging.DEBUG if os.getenv('DEBUG_MODE') == 'true' else logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        
+        def main():
+            try:
+                print("Starting crawler test...")
+                from arxiv_crawler import ArxivCrawler
+                
+                print("Crawler module imported successfully")
+                crawler = ArxivCrawler()
+                print("Crawler initialized successfully")
+                
+                test_date = os.getenv('TEST_DATE', '2025-06-11')
+                print(f"Testing paper retrieval for date: {test_date}")
+                
+                papers = crawler.get_papers(test_date)
+                print(f"Successfully retrieved {len(papers)} papers")
+                
+                if papers:
+                    print("First paper info:")
+                    paper = papers[0]
+                    print(f"  Title: {paper.get('title', 'Unknown')}")
+                    print(f"  Authors: {len(paper.get('authors', []))} authors")
+                    print(f"  Categories: {paper.get('categories', [])}")
+                    print(f"  ArXiv ID: {paper.get('arxiv_id', 'Unknown')}")
+                    print(f"  URL: {paper.get('arxiv_url', 'Unknown')}")
+                else:
+                    print("No papers found. Possible reasons:")
+                    print("  - Network connection issues")
+                    print("  - ArXiv API temporarily unavailable")
+                    print("  - Search criteria too restrictive")
+                    
+                return len(papers)
+                
+            except Exception as e:
+                print(f"Error during testing: {e}")
+                if os.getenv('DEBUG_MODE') == 'true':
+                    print("Detailed error information:")
+                    traceback.print_exc()
+                return -1
+        
+        if __name__ == "__main__":
+            result = main()
+            if result >= 0:
+                print(f"Test completed successfully. Found {result} papers.")
+            else:
+                print("Test failed.")
+                sys.exit(1)
+        EOF
+        
+    - name: Run crawler test
       env:
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         MODEL_NAME: ${{ vars.MODEL_NAME || 'gemini-2.0-flash-exp' }}
         LANGUAGE: ${{ vars.LANGUAGE || 'Traditional Chinese' }}
-        CUSTOM_DATE: ${{ github.event.inputs.test_date }}
-        FORCE_UPDATE: true
+        TEST_DATE: ${{ github.event.inputs.test_date }}
+        DEBUG_MODE: ${{ github.event.inputs.debug_mode }}
+        FORCE_UPDATE: 'true'
       run: |
-        echo "🧪 開始測試爬蟲修復..."
-        echo "📅 測試日期: ${{ github.event.inputs.test_date }}"
-        echo "🔧 偵錯模式: ${{ github.event.inputs.debug_mode }}"
+        echo "Running crawler test..."
+        echo "Test date: ${{ github.event.inputs.test_date }}"
+        echo "Debug mode: ${{ github.event.inputs.debug_mode }}"
         
         if [ "${{ github.event.inputs.debug_mode }}" = "true" ]; then
-          echo "🔍 執行偵錯模式測試..."
           export PYTHONUNBUFFERED=1
-          
-          python -c "
-import logging
-import sys
-import traceback
-
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-try:
-    print('🔍 測試爬蟲初始化...')
-    from arxiv_crawler import ArxivCrawler
-    
-    print('✅ 爬蟲模組導入成功')
-    crawler = ArxivCrawler()
-    print('✅ 爬蟲初始化成功')
-    
-    test_date = '${{ github.event.inputs.test_date }}'
-    print(f'🔍 測試論文抓取 (日期: {test_date})...')
-    
-    papers = crawler.get_papers(test_date)
-    print(f'✅ 成功抓取 {len(papers)} 篇論文')
-    
-    if papers:
-        print('📄 第一篇論文資訊:')
-        paper = papers[0]
-        print(f'  標題: {paper.get(\"title\", \"未知\")}')
-        print(f'  作者: {len(paper.get(\"authors\", []))} 位')
-        print(f'  類別: {paper.get(\"categories\", [])}')
-        print(f'  ID: {paper.get(\"arxiv_id\", \"未知\")}')
-    else:
-        print('⚠️ 沒有找到論文')
-        
-except Exception as e:
-    print(f'❌ 測試過程中發生錯誤: {e}')
-    traceback.print_exc()
-    sys.exit(1)
-"
+          python test_crawler.py
         else
-          echo "🚀 執行完整流程..."
+          echo "Running full pipeline..."
+          export CUSTOM_DATE="${{ github.event.inputs.test_date }}"
           python main.py
         fi
         
-    - name: 📊 測試結果報告
+    - name: Generate test report
       if: always()
       run: |
-        echo "## 🧪 測試結果" >> $GITHUB_STEP_SUMMARY
-        echo "- **測試時間**: $(date -u)" >> $GITHUB_STEP_SUMMARY
-        echo "- **測試日期**: ${{ github.event.inputs.test_date }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **偵錯模式**: ${{ github.event.inputs.debug_mode }}" >> $GITHUB_STEP_SUMMARY
+        echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "- **Test Time**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Test Date**: ${{ github.event.inputs.test_date }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Debug Mode**: ${{ github.event.inputs.debug_mode }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
         
+        # Check for generated files
         if [ -f "data/${{ github.event.inputs.test_date }}.md" ]; then
-          echo "- **報告生成**: ✅ 成功" >> $GITHUB_STEP_SUMMARY
+          echo "- **Report Generated**: ✅ Success" >> $GITHUB_STEP_SUMMARY
           file_size=$(wc -c < "data/${{ github.event.inputs.test_date }}.md")
-          echo "- **報告大小**: ${file_size} 字節" >> $GITHUB_STEP_SUMMARY
+          echo "- **Report Size**: ${file_size} bytes" >> $GITHUB_STEP_SUMMARY
         else
-          echo "- **報告生成**: ❌ 失敗" >> $GITHUB_STEP_SUMMARY
+          echo "- **Report Generated**: ❌ Failed" >> $GITHUB_STEP_SUMMARY
         fi
         
         if [ -f "data/${{ github.event.inputs.test_date }}_papers.json" ]; then
-          echo "- **資料檔案**: ✅ 存在" >> $GITHUB_STEP_SUMMARY
-          paper_count=$(python -c "import json; papers=json.load(open('data/${{ github.event.inputs.test_date }}_papers.json')); print(len(papers))" 2>/dev/null || echo "0")
-          echo "- **論文數量**: ${paper_count} 篇" >> $GITHUB_STEP_SUMMARY
+          echo "- **Data File**: ✅ Exists" >> $GITHUB_STEP_SUMMARY
+          paper_count=$(python -c "
+        import json
+        try:
+            with open('data/${{ github.event.inputs.test_date }}_papers.json', 'r') as f:
+                papers = json.load(f)
+            print(len(papers))
+        except:
+            print(0)
+        " 2>/dev/null || echo "0")
+          echo "- **Paper Count**: ${paper_count} papers" >> $GITHUB_STEP_SUMMARY
         else
-          echo "- **資料檔案**: ❌ 不存在" >> $GITHUB_STEP_SUMMARY
+          echo "- **Data File**: ❌ Not found" >> $GITHUB_STEP_SUMMARY
         fi
         
-        echo "## 🔧 系統狀態" >> $GITHUB_STEP_SUMMARY
-        echo "- **Python 版本**: $(python --version)" >> $GITHUB_STEP_SUMMARY
-        echo "- **API 金鑰**: ${{ secrets.GOOGLE_API_KEY && '已設定' || '未設定' }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## System Status" >> $GITHUB_STEP_SUMMARY
+        echo "- **Python Version**: $(python --version)" >> $GITHUB_STEP_SUMMARY
+        echo "- **API Key**: ${{ secrets.GOOGLE_API_KEY && 'Configured' || 'Not configured' }}" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        rm -f test_crawler.py
