@@ -50,58 +50,46 @@ jobs:
         echo "📅 測試日期: ${{ github.event.inputs.test_date }}"
         echo "🔧 偵錯模式: ${{ github.event.inputs.debug_mode }}"
         
-        if [[ "${{ github.event.inputs.debug_mode }}" == "true" ]]; then
+        if [ "${{ github.event.inputs.debug_mode }}" = "true" ]; then
           echo "🔍 執行偵錯模式測試..."
           export PYTHONUNBUFFERED=1
           
-          # 創建測試腳本
-          cat > test_debug.py << 'EOF'
+          python -c "
 import logging
 import sys
 import traceback
 
-# 設定詳細日誌
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 try:
-    print("🔍 測試爬蟲初始化...")
+    print('🔍 測試爬蟲初始化...')
     from arxiv_crawler import ArxivCrawler
     
-    print("✅ 爬蟲模組導入成功")
+    print('✅ 爬蟲模組導入成功')
     crawler = ArxivCrawler()
-    print("✅ 爬蟲初始化成功")
+    print('✅ 爬蟲初始化成功')
     
-    test_date = "${{ github.event.inputs.test_date }}"
-    print(f"🔍 測試論文抓取 (日期: {test_date})...")
+    test_date = '${{ github.event.inputs.test_date }}'
+    print(f'🔍 測試論文抓取 (日期: {test_date})...')
     
     papers = crawler.get_papers(test_date)
-    print(f"✅ 成功抓取 {len(papers)} 篇論文")
+    print(f'✅ 成功抓取 {len(papers)} 篇論文')
     
     if papers:
-        print("📄 第一篇論文資訊:")
+        print('📄 第一篇論文資訊:')
         paper = papers[0]
-        print(f"  標題: {paper.get('title', '未知')}")
-        print(f"  作者: {len(paper.get('authors', []))} 位")
-        print(f"  類別: {paper.get('categories', [])}")
-        print(f"  ID: {paper.get('arxiv_id', '未知')}")
-        print(f"  連結: {paper.get('arxiv_url', '未知')}")
+        print(f'  標題: {paper.get(\"title\", \"未知\")}')
+        print(f'  作者: {len(paper.get(\"authors\", []))} 位')
+        print(f'  類別: {paper.get(\"categories\", [])}')
+        print(f'  ID: {paper.get(\"arxiv_id\", \"未知\")}')
     else:
-        print("⚠️ 沒有找到論文，可能的原因:")
-        print("  - 網路連接問題")
-        print("  - arXiv API 暫時不可用")
-        print("  - 搜尋條件過於嚴格")
+        print('⚠️ 沒有找到論文')
         
 except Exception as e:
-    print(f"❌ 測試過程中發生錯誤: {e}")
-    print("🔍 詳細錯誤資訊:")
+    print(f'❌ 測試過程中發生錯誤: {e}')
     traceback.print_exc()
     sys.exit(1)
-EOF
-          
-          python test_debug.py
+"
         else
           echo "🚀 執行完整流程..."
           python main.py
@@ -115,7 +103,6 @@ EOF
         echo "- **測試日期**: ${{ github.event.inputs.test_date }}" >> $GITHUB_STEP_SUMMARY
         echo "- **偵錯模式**: ${{ github.event.inputs.debug_mode }}" >> $GITHUB_STEP_SUMMARY
         
-        # 檢查生成的檔案
         if [ -f "data/${{ github.event.inputs.test_date }}.md" ]; then
           echo "- **報告生成**: ✅ 成功" >> $GITHUB_STEP_SUMMARY
           file_size=$(wc -c < "data/${{ github.event.inputs.test_date }}.md")
@@ -126,20 +113,7 @@ EOF
         
         if [ -f "data/${{ github.event.inputs.test_date }}_papers.json" ]; then
           echo "- **資料檔案**: ✅ 存在" >> $GITHUB_STEP_SUMMARY
-          
-          # 創建 Python 腳本來計算論文數量
-          cat > count_papers.py << 'EOF'
-import json
-import sys
-try:
-    with open('data/${{ github.event.inputs.test_date }}_papers.json', 'r') as f:
-        papers = json.load(f)
-    print(len(papers))
-except Exception as e:
-    print(0)
-EOF
-          
-          paper_count=$(python count_papers.py)
+          paper_count=$(python -c "import json; papers=json.load(open('data/${{ github.event.inputs.test_date }}_papers.json')); print(len(papers))" 2>/dev/null || echo "0")
           echo "- **論文數量**: ${paper_count} 篇" >> $GITHUB_STEP_SUMMARY
         else
           echo "- **資料檔案**: ❌ 不存在" >> $GITHUB_STEP_SUMMARY
@@ -148,6 +122,3 @@ EOF
         echo "## 🔧 系統狀態" >> $GITHUB_STEP_SUMMARY
         echo "- **Python 版本**: $(python --version)" >> $GITHUB_STEP_SUMMARY
         echo "- **API 金鑰**: ${{ secrets.GOOGLE_API_KEY && '已設定' || '未設定' }}" >> $GITHUB_STEP_SUMMARY
-        
-        # 清理臨時檔案
-        rm -f test_debug.py count_papers.py
