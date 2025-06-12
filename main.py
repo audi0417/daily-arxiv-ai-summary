@@ -12,12 +12,9 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# 添加 src 目錄到 Python 路徑
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-
-# 本地模組
-from src.crawler import ArxivCrawler
-from src.ai import AISummarizer
+# 本地模組 - 修正導入路徑
+from arxiv_crawler import ArxivCrawler
+from ai_summarizer import AISummarizer
 
 # 設定日誌
 logging.basicConfig(
@@ -39,7 +36,43 @@ def get_today_date():
         except ValueError:
             logger.warning(f"⚠️ 無效的日期格式: {custom_date}")
     
-    return datetime.utcnow().strftime('%Y-%m-%d')
+    # 使用 timezone-aware datetime
+    return datetime.now().strftime('%Y-%m-%d')
+
+def generate_simple_summary(papers, target_date):
+    """生成簡單的論文摘要（無 AI 增強）"""
+    summary_lines = [
+        f"# 📚 每日 ArXiv 論文摘要",
+        f"## 📅 {target_date}",
+        "",
+        f"今日共找到 **{len(papers)}** 篇論文",
+        "",
+        "---",
+        ""
+    ]
+    
+    for i, paper in enumerate(papers, 1):
+        summary_lines.extend([
+            f"### {i}. [{paper['title']}]({paper['arxiv_url']})",
+            "",
+            f"**作者:** {', '.join(paper['authors'])}",
+            f"**類別:** {', '.join(paper['categories'])}",
+            f"**發布日期:** {paper['published'].strftime('%Y-%m-%d') if isinstance(paper['published'], datetime) else paper['published']}",
+            "",
+            f"[📄 查看論文]({paper['arxiv_url']}) | [📥 下載 PDF]({paper['pdf_url']})",
+            "",
+            "**摘要:**",
+            f"> {paper['summary'][:500]}{'...' if len(paper['summary']) > 500 else ''}",
+            "",
+            "---",
+            ""
+        ])
+    
+    summary_lines.extend([
+        f"*報告生成時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*"
+    ])
+    
+    return '\n'.join(summary_lines)
 
 def save_papers_data(papers, date_str):
     """儲存論文資料到 JSON 檔案"""
@@ -51,8 +84,10 @@ def save_papers_data(papers, date_str):
         papers_for_json = []
         for paper in papers:
             paper_copy = paper.copy()
-            paper_copy['published'] = paper['published'].isoformat()
-            paper_copy['updated'] = paper['updated'].isoformat()
+            if isinstance(paper_copy.get('published'), datetime):
+                paper_copy['published'] = paper['published'].isoformat()
+            if isinstance(paper_copy.get('updated'), datetime):
+                paper_copy['updated'] = paper['updated'].isoformat()
             papers_for_json.append(paper_copy)
         
         json_file = data_dir / f"{date_str}_papers.json"
@@ -194,31 +229,75 @@ def main():
         if not papers:
             logger.warning("⚠️ 沒有找到任何論文")
             # 仍然生成一個空報告
-            summarizer = AISummarizer()
-            summary = summarizer._generate_empty_summary()
-            save_summary_report(summary, target_date)
-            update_readme(data_dir)
-            logger.info("📝 已生成空報告")
+            try:
+                summarizer = AISummarizer()
+                summary = summarizer._generate_empty_summary()
+                save_summary_report(summary, target_date)
+                update_readme(data_dir)
+                logger.info("📝 已生成空報告")
+            except Exception as e:
+                logger.error(f"❌ 生成空報告失敗: {e}")
+                # 手動生成空報告
+                empty_summary = f"""# 📚 每日 ArXiv 論文摘要
+
+## 📅 {target_date}
+
+### 📭 今日無新論文
+
+今天沒有發現符合條件的新論文。這可能是由於：
+
+1. 所選類別今日沒有新論文發布
+2. 網路連接問題
+3. arXiv API 暫時不可用
+
+請稍後再來查看！
+
+---
+
+*報告生成時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
+"""
+                save_summary_report(empty_summary, target_date)
+                update_readme(data_dir)
+                logger.info("📝 已生成簡單空報告")
             return
         
         logger.info(f"📊 成功獲取 {len(papers)} 篇論文")
         
         # 顯示類別統計
-        category_stats = crawler.get_paper_categories_stats(papers)
-        logger.info("📊 論文類別統計:")
-        for category, count in list(category_stats.items())[:5]:
-            logger.info(f"   {category}: {count} 篇")
+        try:
+            category_stats = crawler.get_paper_categories_stats(papers)
+            logger.info("📊 論文類別統計:")
+            for category, count in list(category_stats.items())[:5]:
+                logger.info(f"   {category}: {count} 篇")
+        except Exception as e:
+            logger.warning(f"⚠️ 無法顯示類別統計: {e}")
         
         # 儲存原始論文資料
         save_papers_data(papers, target_date)
         
         # 初始化 AI 摘要生成器
         logger.info("🤖 初始化 AI 摘要生成器...")
-        summarizer = AISummarizer()
+        try:
+            summarizer = AISummarizer()
+            logger.info("✅ AI 模型初始化成功")
+        except Exception as e:
+            logger.error(f"❌ AI 模型初始化失敗: {e}")
+            # 生成不帶 AI 摘要的報告
+            summary = generate_simple_summary(papers, target_date)
+            report_file = save_summary_report(summary, target_date)
+            if report_file:
+                update_readme(data_dir)
+                logger.info(f"🎉 生成了簡單摘要報告（無 AI 增強）")
+            return
         
         # 生成摘要
         logger.info("✍️ 開始生成摘要...")
-        summary = summarizer.generate_summary(papers)
+        try:
+            summary = summarizer.generate_summary(papers)
+        except Exception as e:
+            logger.error(f"❌ AI 摘要生成失敗: {e}")
+            # 生成簡單摘要
+            summary = generate_simple_summary(papers, target_date)
         
         # 儲存摘要報告
         report_file = save_summary_report(summary, target_date)
@@ -238,6 +317,8 @@ def main():
         sys.exit(0)
     except Exception as e:
         logger.error(f"❌ 執行失敗: {e}")
+        import traceback
+        logger.error(f"詳細錯誤: {traceback.format_exc()}")
         sys.exit(1)
 
 if __name__ == "__main__":
