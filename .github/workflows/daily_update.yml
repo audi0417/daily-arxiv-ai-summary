@@ -1,18 +1,15 @@
-# GitHub Actions 自動化工作流程 - 完整版本
-# 每日自動抓取 ArXiv 論文並生成 AI 摘要
-
-name: 📚 每日 ArXiv 論文智慧摘要更新
+name: 📚 ArXiv 論文智慧摘要
 
 on:
   # 定時執行：每日 UTC 16:30 (台灣時間 00:30)
   schedule:
     - cron: "30 16 * * *"
   
-  # 允許手動觸發
+  # 手動觸發
   workflow_dispatch:
     inputs:
-      custom_date:
-        description: '自訂日期 (YYYY-MM-DD，留空為今日)'
+      target_date:
+        description: '目標日期 (YYYY-MM-DD，留空為今日)'
         required: false
         type: string
       force_update:
@@ -20,8 +17,12 @@ on:
         required: false
         type: boolean
         default: false
+      debug_mode:
+        description: '偵錯模式 (僅測試爬蟲功能)'
+        required: false
+        type: boolean
+        default: false
 
-# 添加必要的權限設定
 permissions:
   contents: write
   actions: read
@@ -31,229 +32,139 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    # 1. 檢出儲存庫（完整歷史）
     - name: 🔄 檢出儲存庫
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
-        ref: ${{ github.ref_name }}
       
-    # 2. 設定 Python 環境
     - name: 🐍 設定 Python 環境
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
         
-    # 3. 安裝依賴套件
     - name: 📦 安裝依賴套件
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    # 4. 設定 Git 使用者資訊
     - name: ⚙️ 設定 Git 使用者資訊
+      if: github.event.inputs.debug_mode != 'true'
       run: |
         git config --global user.email "${{ vars.EMAIL || 'action@github.com' }}"
         git config --global user.name "${{ vars.NAME || 'ArXiv Daily Bot' }}"
         
-    # 5. 強制同步遠端變更
-    - name: 🔄 強制同步遠端變更
-      run: |
-        echo "🔄 強制同步遠端變更..."
-        git fetch origin --prune
-        git reset --hard origin/${{ github.ref_name }}
-        echo "✅ 同步完成，當前 HEAD: $(git rev-parse HEAD)"
-        
-    # 6. 執行論文爬蟲和摘要生成
     - name: 🚀 執行論文爬蟲和摘要生成
       env:
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         MODEL_NAME: ${{ vars.MODEL_NAME || 'gemini-2.0-flash-exp' }}
         LANGUAGE: ${{ vars.LANGUAGE || 'Traditional Chinese' }}
-        CUSTOM_DATE: ${{ github.event.inputs.custom_date }}
+        CUSTOM_DATE: ${{ github.event.inputs.target_date }}
         FORCE_UPDATE: ${{ github.event.inputs.force_update }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        REPO_NAME: ${{ github.repository }}
       run: |
         echo "🚀 開始執行論文處理..."
         echo "📅 目標日期: ${CUSTOM_DATE:-$(date -u '+%Y-%m-%d')}"
         echo "🔄 強制更新: ${FORCE_UPDATE}"
+        echo "🧪 偵錯模式: ${{ github.event.inputs.debug_mode }}"
         echo "🤖 AI 模型: ${MODEL_NAME}"
         
-        # 執行主腳本
-        python main.py
+        if [ "${{ github.event.inputs.debug_mode }}" = "true" ]; then
+          echo "🧪 執行偵錯模式 - 僅測試爬蟲功能"
+          python -c "
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+print('🔍 測試爬蟲模組導入...')
+from arxiv_crawler import ArxivCrawler
+
+print('✅ 爬蟲模組導入成功')
+crawler = ArxivCrawler()
+print('✅ 爬蟲初始化成功')
+
+test_date = '${CUSTOM_DATE:-$(date -u '+%Y-%m-%d')}'
+print(f'🔍 測試論文抓取 (日期: {test_date})...')
+
+papers = crawler.get_papers(test_date)
+print(f'✅ 成功抓取 {len(papers)} 篇論文')
+
+if papers:
+    print('📄 第一篇論文資訊:')
+    paper = papers[0]
+    print(f'  標題: {paper.get(\"title\", \"未知\")}')
+    print(f'  作者數: {len(paper.get(\"authors\", []))}')
+    print(f'  類別: {paper.get(\"categories\", [])}')
+    print(f'  ArXiv ID: {paper.get(\"arxiv_id\", \"未知\")}')
+    print(f'  發布日期: {paper.get(\"published\", \"未知\")}')
+else:
+    print('⚠️ 沒有找到論文，可能原因:')
+    print('  - 網路連接問題')
+    print('  - arXiv API 暫時不可用')
+    print('  - 搜尋條件過於嚴格')
+    print('  - 週末或假日，arXiv 通常不發布新論文')
+    
+print('🎉 偵錯測試完成')
+"
+        else
+          echo "🚀 執行完整流程"
+          python main.py
+        fi
         
-    # 7. 檢查是否有檔案變更
     - name: 📋 檢查檔案變更
+      if: github.event.inputs.debug_mode != 'true'
       id: check_changes
       run: |
-        echo "📋 檢查檔案變更狀態..."
-        git status --porcelain
-        
         if [[ -z $(git status --porcelain) ]]; then
           echo "has_changes=false" >> $GITHUB_OUTPUT
-          echo "📋 沒有檔案變更，跳過提交步驟"
+          echo "📋 沒有檔案變更"
         else
           echo "has_changes=true" >> $GITHUB_OUTPUT
-          echo "📝 偵測到檔案變更："
+          echo "📝 偵測到檔案變更"
           git status --short
         fi
         
-    # 8. 🎯 原子化提交和推送
-    - name: 🎯 原子化提交和推送
-      if: steps.check_changes.outputs.has_changes == 'true'
+    - name: 💾 提交和推送變更
+      if: steps.check_changes.outputs.has_changes == 'true' && github.event.inputs.debug_mode != 'true'
       run: |
-        echo "💫 開始原子化提交流程..."
-        
-        # 設定變數
         today_date=$(date -u "+%Y-%m-%d")
-        max_attempts=5
-        attempt=1
         
-        # 產生提交訊息
-        if [[ -n "${{ github.event.inputs.custom_date }}" ]]; then
-          commit_message="📚 論文摘要更新: ${{ github.event.inputs.custom_date }} (手動觸發)"
+        if [[ -n "${{ github.event.inputs.target_date }}" ]]; then
+          commit_message="📚 論文摘要更新: ${{ github.event.inputs.target_date }} (手動觸發)"
         else
           commit_message="📚 每日論文摘要更新: ${today_date}"
         fi
         
-        echo "📝 提交訊息: ${commit_message}"
+        git add .
+        git commit -m "${commit_message}"
+        git push
         
-        while [ $attempt -le $max_attempts ]; do
-          echo "🔄 嘗試 $attempt/$max_attempts"
-          
-          # 重新獲取最新狀態
-          git fetch origin
-          
-          # 檢查是否需要合併
-          local_commit=$(git rev-parse HEAD)
-          remote_commit=$(git rev-parse origin/${{ github.ref_name }})
-          
-          echo "📍 本地提交: $local_commit"
-          echo "📍 遠端提交: $remote_commit"
-          
-          if [ "$local_commit" != "$remote_commit" ]; then
-            echo "🔄 偵測到遠端變更，正在同步..."
-            
-            # 暫存當前變更
-            if ! git diff --quiet || ! git diff --cached --quiet; then
-              echo "💾 暫存變更..."
-              git stash push -m "temp_changes_$(date +%s)" --include-untracked
-            fi
-            
-            # 重置到遠端狀態
-            git reset --hard origin/${{ github.ref_name }}
-            
-            # 重新執行腳本以確保最新狀態
-            echo "🔄 重新執行腳本..."
-            python main.py
-            
-            # 檢查是否還有變更
-            if [[ -z $(git status --porcelain) ]]; then
-              echo "📋 同步後沒有變更，結束流程"
-              break
-            fi
-          fi
-          
-          # 新增變更
-          git add .
-          
-          # 再次檢查是否有變更
-          if git diff --cached --quiet; then
-            echo "📋 沒有變更需要提交"
-            break
-          fi
-          
-          # 提交變更
-          echo "💾 提交變更..."
-          git commit -m "${commit_message}"
-          
-          # 嘗試推送 - 使用完整的推送命令
-          echo "🚀 推送變更到遠端..."
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-          
-          if git push origin HEAD:${{ github.ref_name }}; then
-            echo "✅ 成功推送變更 (嘗試 $attempt)"
-            break
-          else
-            echo "⚠️ 推送失敗，準備重試..."
-            
-            if [ $attempt -eq $max_attempts ]; then
-              echo "❌ 達到最大嘗試次數，推送失敗"
-              echo "🔍 最終狀態診斷："
-              echo "- 本地分支: $(git branch --show-current)"
-              echo "- 本地提交: $(git rev-parse HEAD)"
-              echo "- 遠端提交: $(git rev-parse origin/${{ github.ref_name }})"
-              git status
-              exit 1
-            fi
-            
-            # 重置到推送前狀態，準備重試
-            git reset --soft HEAD~1
-            attempt=$((attempt + 1))
-            sleep $((attempt * 2))  # 指數退避
-          fi
-        done
-        
-        echo "🎉 提交流程完成"
-        
-    # 9. 驗證最終狀態
-    - name: 🔍 驗證最終狀態
-      if: always()
-      run: |
-        echo "🔍 最終狀態驗證："
-        echo "- 當前分支: $(git branch --show-current)"
-        echo "- 當前提交: $(git rev-parse HEAD)"
-        echo "- 遠端提交: $(git rev-parse origin/${{ github.ref_name }})"
-        echo "- 工作目錄狀態:"
-        git status --short || echo "  工作目錄乾淨"
-        
-        # 檢查生成的檔案
-        if [ -d "data" ]; then
-          echo "- 生成的報告檔案:"
-          ls -la data/*.md 2>/dev/null || echo "  沒有找到 .md 檔案"
-          ls -la data/*.json 2>/dev/null || echo "  沒有找到 .json 檔案"
-        fi
-        
-    # 10. 生成執行報告
     - name: 📊 生成執行報告
       if: always()
       run: |
         echo "## 📊 執行報告" >> $GITHUB_STEP_SUMMARY
         echo "- **執行時間**: $(date -u)" >> $GITHUB_STEP_SUMMARY
-        echo "- **是否有變更**: ${{ steps.check_changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
         echo "- **執行模式**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Python 版本**: $(python --version)" >> $GITHUB_STEP_SUMMARY
-        echo "- **當前提交**: $(git rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
+        echo "- **偵錯模式**: ${{ github.event.inputs.debug_mode || 'false' }}" >> $GITHUB_STEP_SUMMARY
         
-        if [[ -n "${{ github.event.inputs.custom_date }}" ]]; then
-          echo "- **自訂日期**: ${{ github.event.inputs.custom_date }}" >> $GITHUB_STEP_SUMMARY
+        if [[ -n "${{ github.event.inputs.target_date }}" ]]; then
+          echo "- **目標日期**: ${{ github.event.inputs.target_date }}" >> $GITHUB_STEP_SUMMARY
         fi
         
         if [[ "${{ github.event.inputs.force_update }}" == "true" ]]; then
           echo "- **強制更新**: 是" >> $GITHUB_STEP_SUMMARY
         fi
         
-        echo "## ⚙️ 設定狀態" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## ⚙️ 系統狀態" >> $GITHUB_STEP_SUMMARY
         echo "- **API 金鑰**: ${{ secrets.GOOGLE_API_KEY && '已設定' || '未設定' }}" >> $GITHUB_STEP_SUMMARY
         echo "- **模型名稱**: ${{ vars.MODEL_NAME || '使用預設值' }}" >> $GITHUB_STEP_SUMMARY
         echo "- **輸出語言**: ${{ vars.LANGUAGE || '使用預設值' }}" >> $GITHUB_STEP_SUMMARY
         
         # 檢查生成的檔案
-        if [ -d "data" ]; then
+        if [ -d "data" ] && [ "${{ github.event.inputs.debug_mode }}" != "true" ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "## 📁 生成的檔案" >> $GITHUB_STEP_SUMMARY
           md_count=$(ls data/*.md 2>/dev/null | wc -l)
           json_count=$(ls data/*.json 2>/dev/null | wc -l)
           echo "- **Markdown 報告**: ${md_count} 個" >> $GITHUB_STEP_SUMMARY
           echo "- **JSON 資料**: ${json_count} 個" >> $GITHUB_STEP_SUMMARY
         fi
-        
-    # 11. 清理暫存檔案
-    - name: 🧹 清理暫存檔案
-      if: always()
-      run: |
-        find . -name "*.tmp" -delete 2>/dev/null || true
-        find . -name "*.temp" -delete 2>/dev/null || true
-        find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-        find . -name "*.pyc" -delete 2>/dev/null || true
