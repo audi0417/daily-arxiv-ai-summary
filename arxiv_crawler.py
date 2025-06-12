@@ -33,6 +33,9 @@ class ArxivCrawler:
         self.session.headers.update({
             'User-Agent': 'ArXiv-Daily-Summary/1.0 (https://github.com/audi0417/daily-arxiv-ai-summary)'
         })
+        # 設置重試參數
+        self.max_retries = 3
+        self.retry_delay = 5
         
     def _load_config(self, config_path: str) -> Dict:
         """載入設定檔"""
@@ -51,7 +54,7 @@ class ArxivCrawler:
     def _get_default_config(self) -> Dict:
         """取得預設設定"""
         return {
-            'categories': ['cs.AI', 'cs.LG', 'cs.CV', 'cs.CL'],
+            'categories': ['cs.AI', 'cs.LG', 'cs.CV', 'cs.CL', 'cs.NE', 'cs.IR', 'cs.HC', 'stat.ML', 'stat.AP', 'math.OC'],
             'limits': {
                 'max_papers_per_day': 50,
                 'max_papers_per_category': 10
@@ -63,7 +66,7 @@ class ArxivCrawler:
             'keywords': {
                 'include': [
                     'transformer', 'attention', 'deep learning', 
-                    'neural network', 'machine learning'
+                    'neural network', 'machine learning', 'artificial intelligence'
                 ]
             }
         }
@@ -103,44 +106,72 @@ class ArxivCrawler:
             論文資訊字典
         """
         try:
+            # 定義命名空間
+            namespaces = {
+                'atom': 'http://www.w3.org/2005/Atom',
+                'arxiv': 'http://arxiv.org/schemas/atom'
+            }
+            
             # 基本資訊
-            paper_id = entry.find('{http://www.w3.org/2005/Atom}id').text
+            id_elem = entry.find('atom:id', namespaces)
+            if id_elem is None:
+                return None
+            
+            paper_id = id_elem.text
             arxiv_id = paper_id.split('/')[-1]
             
-            title = entry.find('{http://www.w3.org/2005/Atom}title').text.strip()
+            # 標題
+            title_elem = entry.find('atom:title', namespaces)
+            title = title_elem.text.strip() if title_elem is not None else "未知標題"
             title = re.sub(r'\s+', ' ', title)  # 清理多餘空格
             
-            summary = entry.find('{http://www.w3.org/2005/Atom}summary').text.strip()
+            # 摘要
+            summary_elem = entry.find('atom:summary', namespaces)
+            summary = summary_elem.text.strip() if summary_elem is not None else "無摘要"
             summary = re.sub(r'\s+', ' ', summary)  # 清理多餘空格
             
             # 作者資訊
             authors = []
-            for author in entry.findall('{http://www.w3.org/2005/Atom}author'):
-                name = author.find('{http://www.w3.org/2005/Atom}name').text
-                authors.append(name)
+            for author in entry.findall('atom:author', namespaces):
+                name_elem = author.find('atom:name', namespaces)
+                if name_elem is not None:
+                    authors.append(name_elem.text)
             
             # 類別資訊
             categories = []
-            for cat in entry.findall('{http://arxiv.org/schemas/atom}primary_category'):
-                categories.append(cat.get('term'))
-            for cat in entry.findall('{http://arxiv.org/schemas/atom}category'):
+            
+            # 主要類別
+            primary_cat = entry.find('arxiv:primary_category', namespaces)
+            if primary_cat is not None:
+                categories.append(primary_cat.get('term'))
+            
+            # 所有類別
+            for cat in entry.findall('atom:category', namespaces):
                 cat_term = cat.get('term')
-                if cat_term not in categories:
+                if cat_term and cat_term not in categories:
                     categories.append(cat_term)
             
             # 日期資訊
-            published_raw = entry.find('{http://www.w3.org/2005/Atom}published').text
-            published = datetime.fromisoformat(published_raw.replace('Z', '+00:00'))
+            published_elem = entry.find('atom:published', namespaces)
+            if published_elem is not None:
+                published_raw = published_elem.text
+                published = datetime.fromisoformat(published_raw.replace('Z', '+00:00'))
+            else:
+                published = datetime.now()
             
-            updated_raw = entry.find('{http://www.w3.org/2005/Atom}updated').text
-            updated = datetime.fromisoformat(updated_raw.replace('Z', '+00:00'))
+            updated_elem = entry.find('atom:updated', namespaces)
+            if updated_elem is not None:
+                updated_raw = updated_elem.text
+                updated = datetime.fromisoformat(updated_raw.replace('Z', '+00:00'))
+            else:
+                updated = published
             
             # PDF 連結
-            pdf_url = None
-            for link in entry.findall('{http://www.w3.org/2005/Atom}link'):
-                if link.get('title') == 'pdf':
-                    pdf_url = link.get('href')
-                    break
+            pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+            
+            # 檢查是否有評論
+            comment_elem = entry.find('arxiv:comment', namespaces)
+            comment = comment_elem.text if comment_elem is not None else None
             
             return {
                 'arxiv_id': arxiv_id,
@@ -151,7 +182,8 @@ class ArxivCrawler:
                 'published': published,
                 'updated': updated,
                 'pdf_url': pdf_url,
-                'arxiv_url': f"https://arxiv.org/abs/{arxiv_id}"
+                'arxiv_url': f"https://arxiv.org/abs/{arxiv_id}",
+                'comment': comment
             }
             
         except Exception as e:
@@ -174,6 +206,9 @@ class ArxivCrawler:
         keywords_config = self.config['keywords']
         include_keywords = keywords_config.get('include', [])
         exclude_keywords = keywords_config.get('exclude', [])
+        
+        if not include_keywords and not exclude_keywords:
+            return papers
         
         filtered_papers = []
         
@@ -270,7 +305,7 @@ class ArxivCrawler:
     
     def _search_papers(self, query: str, max_results: int = 100) -> List[Dict]:
         """
-        執行 arXiv 搜尋
+        執行 arXiv 搜尋，支持重試機制
         
         Args:
             query: 搜尋查詢
@@ -288,43 +323,90 @@ class ArxivCrawler:
         
         url = f"{self.base_url}?{urlencode(params)}"
         
-        try:
-            logger.info(f"🌐 發送請求到 arXiv API...")
-            response = self.session.get(url, timeout=30)
-            response.raise_for_status()
-            
-            # 解析 XML 回應
-            root = ET.fromstring(response.content)
-            
-            # 檢查是否有錯誤
-            for message in root.findall('.//{http://www.w3.org/2005/Atom}title'):
-                if 'Error' in message.text:
-                    logger.error(f"❌ arXiv API 錯誤: {message.text}")
-                    return []
-            
-            # 解析論文條目
-            papers = []
-            entries = root.findall('{http://www.w3.org/2005/Atom}entry')
-            
-            for entry in entries:
-                paper = self._parse_paper_entry(entry)
-                if paper:
-                    papers.append(paper)
-            
-            # API 請求限制：每 3 秒最多 1 次請求
-            time.sleep(3)
-            
-            return papers
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"❌ 網路請求失敗: {e}")
-            return []
-        except ET.ParseError as e:
-            logger.error(f"❌ XML 解析失敗: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"❌ 搜尋論文時發生未知錯誤: {e}")
-            return []
+        for attempt in range(self.max_retries):
+            try:
+                logger.info(f"🌐 發送請求到 arXiv API (嘗試 {attempt + 1}/{self.max_retries})...")
+                
+                # 使用更長的超時時間
+                response = self.session.get(url, timeout=60)
+                response.raise_for_status()
+                
+                # 檢查回應是否為空
+                if not response.content:
+                    logger.warning("⚠️ 收到空回應")
+                    if attempt < self.max_retries - 1:
+                        time.sleep(self.retry_delay)
+                        continue
+                    else:
+                        return []
+                
+                # 解析 XML 回應
+                try:
+                    root = ET.fromstring(response.content)
+                except ET.ParseError as e:
+                    logger.error(f"❌ XML 解析失敗: {e}")
+                    if attempt < self.max_retries - 1:
+                        time.sleep(self.retry_delay)
+                        continue
+                    else:
+                        return []
+                
+                # 檢查是否有錯誤訊息
+                total_results_elem = root.find('.//{http://a9.com/-/spec/opensearch/1.1/}totalResults')
+                if total_results_elem is not None:
+                    total_results = int(total_results_elem.text)
+                    logger.info(f"📊 arXiv 回報總結果數: {total_results}")
+                
+                # 解析論文條目
+                papers = []
+                namespaces = {
+                    'atom': 'http://www.w3.org/2005/Atom',
+                    'arxiv': 'http://arxiv.org/schemas/atom'
+                }
+                
+                entries = root.findall('atom:entry', namespaces)
+                logger.info(f"📄 解析到 {len(entries)} 個條目")
+                
+                for entry in entries:
+                    paper = self._parse_paper_entry(entry)
+                    if paper:
+                        papers.append(paper)
+                
+                # API 請求限制：每 3 秒最多 1 次請求
+                time.sleep(3)
+                
+                logger.info(f"✅ 成功解析 {len(papers)} 篇論文")
+                return papers
+                
+            except requests.exceptions.Timeout:
+                logger.warning(f"⚠️ 請求超時 (嘗試 {attempt + 1})")
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)
+                else:
+                    logger.error("❌ 所有重試都超時")
+                    
+            except requests.exceptions.ConnectionError as e:
+                logger.warning(f"⚠️ 連接錯誤 (嘗試 {attempt + 1}): {e}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)
+                else:
+                    logger.error("❌ 所有重試都連接失敗")
+                    
+            except requests.exceptions.RequestException as e:
+                logger.error(f"❌ 網路請求失敗 (嘗試 {attempt + 1}): {e}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)
+                else:
+                    logger.error("❌ 所有網路請求都失敗")
+                    
+            except Exception as e:
+                logger.error(f"❌ 搜尋論文時發生未知錯誤 (嘗試 {attempt + 1}): {e}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)
+                else:
+                    logger.error("❌ 所有嘗試都失敗")
+        
+        return []
     
     def get_paper_categories_stats(self, papers: List[Dict]) -> Dict[str, int]:
         """
