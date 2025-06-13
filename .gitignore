@@ -1,98 +1,23 @@
-# Python 相關
+# Python-generated files
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
+*.py[oc]
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
 wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-PIPFILE.lock
+*.egg-info
 
-# 虛擬環境
-.env
+# Virtual environments
 .venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# IDE 和編輯器
-.vscode/
+.env
+test/*
 .idea/
-*.swp
-*.swo
-*~
 
-# 作業系統產生的檔案
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Scrapy generated files
+.scrapy/
 
-# 日誌檔案
-*.log
-logs/
+# Data files
+data/*.jsonl
+data/*.md
 
-# 暫存檔案
-*.tmp
-*.temp
-*.cache
-
-# 測試相關
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# 專案特定的忽略檔案
-/data/*.jsonl
-/data/*.json
-/error.log
-/debug.log
-
-# 敏感資訊
-.env.local
-.env.*.local
-config/secrets.yaml
-
-# 備份檔案
-*.bak
-*.backup
-
-# 編譯和快取
-*.pyc
-*.pyo
-*.pyd
-.cache
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# Asset files
+assets/
