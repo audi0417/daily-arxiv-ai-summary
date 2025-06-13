@@ -40,7 +40,17 @@ The project has been completely rewritten using a more efficient architecture:
 5. **Google Gemini Integration**: Uses Google's latest Gemini models for AI analysis
 
 # Content
-No papers have been processed yet. Run the workflow to generate content.
+[README](data/README.md)
+
+
+[2025-06-12](data/2025-06-12.md)
+
+
+[2025-06-11](data/2025-06-11.md)
+
+
+[2025-06-10](data/2025-06-10.md)
+
 
 # Related tools
 - Original inspiration: https://github.com/dw-dengwei/daily-arXiv-ai-enhanced
