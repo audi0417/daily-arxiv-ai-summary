@@ -7,6 +7,12 @@ on:
   schedule:
     - cron: "30 16 * * *"
   workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode (limits papers for testing)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -25,21 +31,24 @@ jobs:
     - name: Run script
       run: |
         export GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}
-        export LANGUAGE="${{ vars.LANGUAGE }}"
-        export CATEGORIES="${{ vars.CATEGORIES }}"
-        export MODEL_NAME="${{ vars.MODEL_NAME }}"
+        export LANGUAGE="${{ vars.LANGUAGE || 'English' }}"
+        export CATEGORIES="${{ vars.CATEGORIES || 'cs.AI,cs.LG,cs.CV,cs.CL' }}"
+        export MODEL_NAME="${{ vars.MODEL_NAME || 'gemini-2.0-flash-exp' }}"
+        if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
+          export TEST_MODE=true
+        fi
         bash run.sh
     - name: commit
       run: |
-        git config --global user.email "${{ vars.EMAIL }}"
-        git config --global user.name "${{ vars.NAME }}"
+        git config --global user.email "${{ vars.EMAIL || 'action@github.com' }}"
+        git config --global user.name "${{ vars.NAME || 'GitHub Action' }}"
         git add .
         # 检查是否有变更需要提交
         if git diff --staged --quiet; then
           echo "No changes to commit"
           exit 0
         fi
-        git commit -m "update"
+        git commit -m "📚 Daily arXiv papers update - $(date '+%Y-%m-%d')"
     - name: Pull latest changes and push
       run: |
         # 设置Git配置以处理自动合并
