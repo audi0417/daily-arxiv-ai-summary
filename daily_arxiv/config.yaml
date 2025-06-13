@@ -1,0 +1,9 @@
+arxiv:
+  categories:  # 文章類型
+    - cs.AI
+    - cs.LG
+    - cs.CV
+    - cs.CL
+
+llm:
+  model_name: 'gpt-4o-mini'  # 使用的LLM模型
