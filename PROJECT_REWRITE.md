@@ -1,8 +1,8 @@
-# Project Rewrite Complete
+# Project Rewrite Complete - Google Gemini Integration
 
 ## What was done
 
-This project has been completely rewritten to fix the crawler issues and implement a more robust architecture based on the reference project `dw-dengwei/daily-arXiv-ai-enhanced`.
+This project has been completely rewritten to fix the crawler issues and implement a more robust architecture based on the reference project `dw-dengwei/daily-arXiv-ai-enhanced`, **with Google Gemini integration**.
 
 ### Key Improvements
 
@@ -11,16 +11,21 @@ This project has been completely rewritten to fix the crawler issues and impleme
    - New implementation uses Scrapy spider for robust web scraping
    - Better error handling and retry mechanisms
 
-2. **Modular Architecture**
+2. **Google Gemini Integration**
+   - Uses `langchain-google-genai` for AI-powered paper analysis
+   - Supports latest Gemini models (gemini-2.0-flash-exp by default)
+   - Structured output using Pydantic models
+
+3. **Modular Architecture**
    - `daily_arxiv/`: Scrapy-based crawler for arXiv papers
-   - `ai/`: LangChain-based AI enhancement module with structured output
+   - `ai/`: LangChain + Google Gemini AI enhancement module
    - `to_md/`: Markdown generation from processed data
 
-3. **Structured AI Output**
+4. **Structured AI Output**
    - Uses Pydantic models for consistent AI analysis
    - Structured fields: TL;DR, motivation, method, result, conclusion
 
-4. **Improved Workflow**
+5. **Improved Workflow**
    - Single, clean GitHub Actions workflow
    - Better environment variable handling
    - Automatic README updates
@@ -37,7 +42,7 @@ This project has been completely rewritten to fix the crawler issues and impleme
 │   │   └── settings.py           # Scrapy settings
 │   ├── config.yaml               # Configuration file
 │   └── scrapy.cfg                # Scrapy config
-├── ai/                           # AI enhancement module
+├── ai/                           # AI enhancement module (Google Gemini)
 │   ├── enhance.py                # Main AI processor
 │   ├── structure.py              # Pydantic models
 │   ├── system.txt                # AI system prompt
@@ -59,32 +64,46 @@ This project has been completely rewritten to fix the crawler issues and impleme
 To use this rewritten project, you need to set up the following GitHub repository secrets and variables:
 
 **Secrets:**
-- `OPENAI_API_KEY`: Your OpenAI API key
-- `OPENAI_BASE_URL`: (Optional) Custom OpenAI base URL
+- `GOOGLE_API_KEY`: Your Google AI API key (get from https://ai.google.dev/)
 
 **Variables:**
 - `CATEGORIES`: Comma-separated categories (e.g., "cs.AI,cs.LG,cs.CV,cs.CL")  
-- `LANGUAGE`: Output language (e.g., "English", "Chinese")
-- `MODEL_NAME`: LLM model to use (e.g., "gpt-4o-mini")
+- `LANGUAGE`: Output language (e.g., "English", "Chinese", "Traditional Chinese")
+- `MODEL_NAME`: Gemini model to use (e.g., "gemini-2.0-flash-exp", "gemini-1.5-pro")
 - `EMAIL`: Your email for Git commits
 - `NAME`: Your name for Git commits
 
-### What was removed
+### Available Gemini Models
 
-The following old files were replaced or are no longer needed:
-- `arxiv_crawler.py` (replaced with Scrapy spider)
-- `ai_summarizer.py` (replaced with ai/enhance.py)
-- `main.py` (replaced with modular approach)
-- `simple_main.py` (no longer needed)
-- Old workflow files (replaced with single run.yml)
-- `config/topics.yaml` (replaced with daily_arxiv/config.yaml)
+You can use the following models by setting the `MODEL_NAME` variable:
+- `gemini-2.0-flash-exp` (default, latest experimental model)
+- `gemini-1.5-pro` (stable, high-quality model)
+- `gemini-1.5-flash` (fast, efficient model)
+
+### What was removed/changed
+
+The following changes were made to integrate Google Gemini:
+- Replaced OpenAI integration with Google Gemini
+- Updated `requirements.txt` to include `langchain-google-genai`
+- Modified `ai/enhance.py` to use `ChatGoogleGenerativeAI`
+- Updated workflow to use `GOOGLE_API_KEY` instead of `OPENAI_API_KEY`
+- Updated all documentation to reflect Gemini usage
 
 ### Next Steps
 
-1. The old workflow files are still present but disabled
-2. The new workflow will run daily at 16:30 UTC
-3. You can manually trigger the workflow to test it
-4. The system will generate daily markdown reports in the `data/` directory
-5. README.md will be automatically updated with links to new reports
+1. Set up your `GOOGLE_API_KEY` secret in GitHub repository settings
+2. Configure the repository variables as described above
+3. The new workflow will run daily at 16:30 UTC
+4. You can manually trigger the workflow to test it
+5. The system will generate daily markdown reports in the `data/` directory
+6. README.md will be automatically updated with links to new reports
 
-The project is now ready to run and should be much more reliable than the previous implementation.
+The project is now ready to run with Google Gemini and should be much more reliable than the previous implementation.
+
+### Getting Google AI API Key
+
+1. Go to https://ai.google.dev/
+2. Click "Get API key"
+3. Create a new project or select existing one
+4. Generate your API key
+5. Add it as `GOOGLE_API_KEY` secret in your GitHub repository
