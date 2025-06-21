@@ -51,33 +51,12 @@ jobs:
         echo "偵錯模式: ${{ github.event.inputs.debug_mode }}"
         
         if [ "${{ github.event.inputs.debug_mode }}" = "true" ]; then
-          echo "啟用偵錯模式，只測試爬蟲功能..."
-          python -c "
-import logging
-logging.basicConfig(level=logging.DEBUG)
-
-print('測試爬蟲模組...')
-from arxiv_crawler import ArxivCrawler
-
-print('初始化爬蟲...')
-crawler = ArxivCrawler()
-
-print('開始抓取論文...')
-papers = crawler.get_papers('${{ github.event.inputs.test_date }}')
-
-print(f'成功抓取 {len(papers)} 篇論文')
-if papers:
-    print('第一篇論文:')
-    paper = papers[0]
-    print(f'  標題: {paper.get(\"title\", \"未知\")}')
-    print(f'  作者數: {len(paper.get(\"authors\", []))}')
-    print(f'  類別: {paper.get(\"categories\", [])}')
-    print(f'  ArXiv ID: {paper.get(\"arxiv_id\", \"未知\")}')
-print('測試完成')
-"
+          echo "啟用偵錯模式，測試 Scrapy 系統..."
+          cd daily_arxiv
+          scrapy crawl arxiv -s CLOSESPIDER_ITEMCOUNT=5
         else
           echo "執行完整流程..."
-          python main.py
+          bash run.sh
         fi
         
     - name: 檢查結果
@@ -85,9 +64,9 @@ print('測試完成')
         echo "檢查生成的檔案..."
         ls -la data/ 2>/dev/null || echo "沒有 data 目錄"
         
-        if [ -f "data/${{ github.event.inputs.test_date }}.md" ]; then
-          echo "✅ 報告已生成"
-          echo "報告大小: $(wc -c < data/${{ github.event.inputs.test_date }}.md) 字節"
+        if [ -f "data/${{ github.event.inputs.test_date }}.jsonl" ]; then
+          echo "✅ 原始數據已生成"
+          echo "數據大小: $(wc -c < data/${{ github.event.inputs.test_date }}.jsonl) 字節"
         else
-          echo "❌ 報告未生成"
+          echo "❌ 原始數據未生成"
         fi
