@@ -1,10 +1,14 @@
-# Core dependencies
-requests>=2.31.0
-pyyaml>=6.0.1
+# 支援 Scrapy 爬蟲系統
+scrapy>=2.12.0
 lxml>=4.9.3
+requests>=2.31.0
 
-# AI dependencies  
+# AI 增強功能
 google-generativeai>=0.3.0
 
-# Utility
+# 工具庫
+pyyaml>=6.0.1
 python-dotenv>=1.0.0
+
+# 可選：現代化系統的依賴（保留以備將來使用）
+# pydantic>=2.5.0
