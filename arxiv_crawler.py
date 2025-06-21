@@ -54,21 +54,16 @@ class ArxivCrawler:
     def _get_default_config(self) -> Dict:
         """取得預設設定"""
         return {
-            'categories': ['cs.AI', 'cs.LG', 'cs.CV', 'cs.CL', 'cs.NE', 'cs.IR', 'cs.HC', 'stat.ML', 'stat.AP', 'math.OC'],
+            'categories': ['cs.AI', 'cs.LG', 'cs.CV', 'cs.CL', 'cs.NE', 'cs.IR'],
             'limits': {
                 'max_papers_per_day': 50,
-                'max_papers_per_category': 10
+                'max_papers_per_category': 15
             },
             'date_filter': {
-                'recent_days': 3,
+                'recent_days': 7,  # 擴大到7天
                 'include_weekends': True
-            },
-            'keywords': {
-                'include': [
-                    'transformer', 'attention', 'deep learning', 
-                    'neural network', 'machine learning', 'artificial intelligence'
-                ]
             }
+            # 暫時移除關鍵字過濾，避免過度限制
         }
     
     def _build_search_query(self, categories: List[str], date_from: str) -> str:
@@ -86,7 +81,7 @@ class ArxivCrawler:
         cat_queries = [f"cat:{cat}" for cat in categories]
         cat_query = " OR ".join(cat_queries)
         
-        # 建構日期查詢
+        # 建構日期查詢 - 使用更寬鬆的日期範圍
         date_query = f"submittedDate:[{date_from}* TO *]"
         
         # 結合查詢
@@ -192,7 +187,7 @@ class ArxivCrawler:
     
     def _filter_papers_by_keywords(self, papers: List[Dict]) -> List[Dict]:
         """
-        根據關鍵字過濾論文
+        根據關鍵字過濾論文（可選）
         
         Args:
             papers: 論文列表
@@ -200,7 +195,9 @@ class ArxivCrawler:
         Returns:
             過濾後的論文列表
         """
+        # 如果沒有設定關鍵字過濾，直接返回所有論文
         if 'keywords' not in self.config:
+            logger.info("🔍 未設定關鍵字過濾，保留所有論文")
             return papers
         
         keywords_config = self.config['keywords']
@@ -215,7 +212,7 @@ class ArxivCrawler:
         for paper in papers:
             text_to_search = f"{paper['title']} {paper['summary']}".lower()
             
-            # 檢查包含關鍵字
+            # 檢查包含關鍵字 - 放寬條件
             if include_keywords:
                 has_include_keyword = any(
                     keyword.lower() in text_to_search 
@@ -272,9 +269,9 @@ class ArxivCrawler:
         if target_date is None:
             target_date = datetime.utcnow().strftime('%Y-%m-%d')
         
-        # 計算搜尋日期範圍
+        # 計算搜尋日期範圍 - 擴大搜尋範圍
         target_dt = datetime.strptime(target_date, '%Y-%m-%d')
-        recent_days = self.config.get('date_filter', {}).get('recent_days', 3)
+        recent_days = self.config.get('date_filter', {}).get('recent_days', 7)
         start_date = target_dt - timedelta(days=recent_days)
         date_from = start_date.strftime('%Y%m%d')
         
@@ -296,20 +293,20 @@ class ArxivCrawler:
         
         logger.info(f"📄 找到 {len(papers)} 篇論文")
         
-        # 應用過濾條件
-        papers = self._filter_papers_by_keywords(papers)
+        # 應用過濾條件（放寬）
+        # papers = self._filter_papers_by_keywords(papers)  # 暫時禁用關鍵字過濾
         papers = self._apply_limits(papers)
         
         logger.info(f"✅ 最終獲得 {len(papers)} 篇論文")
         return papers
     
-    def _search_papers(self, query: str, max_results: int = 100) -> List[Dict]:
+    def _search_papers(self, query: str, max_results: int = 200) -> List[Dict]:
         """
         執行 arXiv 搜尋，支持重試機制
         
         Args:
             query: 搜尋查詢
-            max_results: 最大結果數量
+            max_results: 最大結果數量（增加數量）
             
         Returns:
             論文列表
