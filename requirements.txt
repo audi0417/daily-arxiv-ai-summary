@@ -9,6 +9,3 @@ google-generativeai>=0.3.0
 # 工具庫
 pyyaml>=6.0.1
 python-dotenv>=1.0.0
-
-# 可選：現代化系統的依賴（保留以備將來使用）
-# pydantic>=2.5.0
