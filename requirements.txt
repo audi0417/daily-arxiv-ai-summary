@@ -1,16 +1,10 @@
 # Core dependencies
-arxiv>=2.1.3
-scrapy>=2.12.0
-pydantic>=2.5.0
-
-# AI/LLM dependencies
-langchain>=0.3.20
-langchain-google-genai>=2.0.5
-
-# Utility dependencies
-python-dotenv>=1.0.0
-pyyaml>=6.0.1
-
-# Optional: Web scraping utilities
-lxml>=4.9.3
 requests>=2.31.0
+pyyaml>=6.0.1
+lxml>=4.9.3
+
+# AI dependencies  
+google-generativeai>=0.3.0
+
+# Utility
+python-dotenv>=1.0.0
